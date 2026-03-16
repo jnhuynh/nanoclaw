@@ -70,6 +70,9 @@ Main has read-only access to the project and read-write access to its group fold
 | `/workspace/projects` | `~/Projects` | read-write |
 | `/workspace/obsidian` | `~/Obsidian` | read-write |
 
+When the user refers to `~/Projects`, `$HOME/Projects`, or just "my projects", use `/workspace/projects`.
+When the user refers to `~/Obsidian`, `$HOME/Obsidian`, or just "my notes"/"Obsidian", use `/workspace/obsidian`.
+
 Key paths inside the container:
 - `/workspace/project/store/messages.db` - SQLite database
 - `/workspace/project/store/messages.db` (registered_groups table) - Group config
