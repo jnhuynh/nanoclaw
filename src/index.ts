@@ -588,7 +588,10 @@ async function main(): Promise<void> {
     // Force-enqueue so the message loop picks it up immediately
     queue.enqueueMessageCheck(chatJid);
 
-    logger.info({ group: group.name, chatJid }, '/obsidian: note request queued');
+    logger.info(
+      { group: group.name, chatJid },
+      '/obsidian: note request queued',
+    );
   }
 
   // Channel callbacks (shared by all channels)
@@ -619,7 +622,8 @@ async function main(): Promise<void> {
         handleObsidianCommand(
           chatJid,
           msg,
-          noteContent || '(Process the most recent voice transcription or conversation as a note)',
+          noteContent ||
+            '(Process the most recent voice transcription or conversation as a note)',
         ).catch((err) =>
           logger.error({ err, chatJid }, '/obsidian command error'),
         );

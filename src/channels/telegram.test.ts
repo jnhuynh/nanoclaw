@@ -606,7 +606,9 @@ describe('TelegramChannel', () => {
 
       expect(opts.onMessage).toHaveBeenCalledWith(
         'tg:100200300',
-        expect.objectContaining({ content: '[Voice Message - transcription unavailable]' }),
+        expect.objectContaining({
+          content: '[Voice Message - transcription unavailable]',
+        }),
       );
     });
 

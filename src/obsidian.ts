@@ -42,13 +42,7 @@ export async function searchRelatedNotes(
   try {
     const { stdout } = await execFileAsync(
       'qmd',
-      [
-        'search',
-        query,
-        '-c',
-        'pj-private-vault',
-        '--files',
-      ],
+      ['search', query, '-c', 'pj-private-vault', '--files'],
       { timeout: 30_000 },
     );
 
@@ -57,7 +51,9 @@ export async function searchRelatedNotes(
     for (const line of stdout.trim().split('\n')) {
       if (!line.trim()) continue;
       // Parse CSV-like line: docid,score,qmd://pj-private-vault/path.md,"context"
-      const match = line.match(/^[^,]+,([^,]+),qmd:\/\/pj-private-vault\/(.+?)(?:,".*")?$/);
+      const match = line.match(
+        /^[^,]+,([^,]+),qmd:\/\/pj-private-vault\/(.+?)(?:,".*")?$/,
+      );
       if (match) {
         const vaultRelPath = match[2];
         // Strip .md extension for the note name
