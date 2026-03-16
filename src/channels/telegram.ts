@@ -229,11 +229,14 @@ export class TelegramChannel implements Channel {
         const file = await ctx.getFile();
         const url = `https://api.telegram.org/file/bot${this.botToken}/${file.file_path}`;
         const buffer = await this.downloadFile(url);
-        const transcript = await transcribeBuffer(buffer);
-        if (transcript) {
-          content = `[Voice: ${transcript.trim()}]`;
+        const result = await transcribeBuffer(buffer);
+        if (result) {
+          content = `[Voice: ${result.transcript.trim()}]`;
+          if (result.audioFile) {
+            content += `\n[audio-file: ${result.audioFile}]`;
+          }
           logger.info(
-            { chatJid, chars: transcript.length },
+            { chatJid, chars: result.transcript.length },
             'Telegram voice transcribed',
           );
         }

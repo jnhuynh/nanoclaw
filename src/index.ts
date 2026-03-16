@@ -44,7 +44,7 @@ import {
   storeMessage,
 } from './db.js';
 import { GroupQueue } from './group-queue.js';
-import { resolveGroupFolderPath } from './group-folder.js';
+import { resolveGroupFolderPath, resolveGroupIpcPath } from './group-folder.js';
 import { startIpcWatcher } from './ipc.js';
 import { findChannel, formatMessages, formatOutbound } from './router.js';
 import {
@@ -62,6 +62,7 @@ import {
 import { startSchedulerLoop } from './task-scheduler.js';
 import { Channel, NewMessage, RegisteredGroup } from './types.js';
 import { logger } from './logger.js';
+import { buildObsidianContext } from './obsidian.js';
 
 // Re-export for backwards compatibility during refactor
 export { escapeXml, formatMessages } from './router.js';
@@ -564,6 +565,32 @@ async function main(): Promise<void> {
     );
   }
 
+  // /obsidian command handler — create Obsidian notes with enrichment
+  async function handleObsidianCommand(
+    chatJid: string,
+    msg: NewMessage,
+    content: string,
+  ): Promise<void> {
+    const group = registeredGroups[chatJid];
+    if (!group) return;
+
+    // Build qmd search context and tag list for the agent
+    const ipcDir = resolveGroupIpcPath(group.folder);
+    await buildObsidianContext(content, ipcDir).catch((err) =>
+      logger.warn({ err }, 'Failed to build obsidian context (non-fatal)'),
+    );
+
+    // Store the message with trigger prefix + obsidian markers so the agent
+    // is triggered and knows to create a note
+    const enrichedContent = `@${ASSISTANT_NAME} [OBSIDIAN_NOTE]\n${content}\n[/OBSIDIAN_NOTE]`;
+    storeMessage({ ...msg, content: enrichedContent });
+
+    // Force-enqueue so the message loop picks it up immediately
+    queue.enqueueMessageCheck(chatJid);
+
+    logger.info({ group: group.name, chatJid }, '/obsidian: note request queued');
+  }
+
   // Channel callbacks (shared by all channels)
   const channelOpts = {
     onMessage: (chatJid: string, msg: NewMessage) => {
@@ -582,6 +609,19 @@ async function main(): Promise<void> {
       if (trimmed === '/new') {
         handleNewSession(chatJid).catch((err) =>
           logger.error({ err, chatJid }, '/new command error'),
+        );
+        return;
+      }
+
+      // /obsidian — create an Obsidian note (with optional content)
+      if (trimmed === '/obsidian' || trimmed.startsWith('/obsidian ')) {
+        const noteContent = trimmed.replace(/^\/obsidian\s*/, '').trim();
+        handleObsidianCommand(
+          chatJid,
+          msg,
+          noteContent || '(Process the most recent voice transcription or conversation as a note)',
+        ).catch((err) =>
+          logger.error({ err, chatJid }, '/obsidian command error'),
         );
         return;
       }
