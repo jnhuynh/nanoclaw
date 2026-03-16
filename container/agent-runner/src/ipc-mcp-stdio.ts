@@ -412,13 +412,6 @@ After creating thesis files in /workspace/projects/pj/huynh.io/{directory}/, cal
     commit_message: z.string().optional().describe('Custom commit message. Defaults to "draft: {directory}"'),
   },
   async (args) => {
-    if (!isMain) {
-      return {
-        content: [{ type: 'text' as const, text: 'Only the main group can push drafts.' }],
-        isError: true,
-      };
-    }
-
     const requestId = `draft-git-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     writeIpcFile(TASKS_DIR, {
       type: 'draft_git_push',
@@ -446,13 +439,6 @@ Use this after generating the blog draft and pushing to Git.`,
     directory: z.string().describe('The thesis directory name (e.g., "20260316-spec-driven-dev")'),
   },
   async (args) => {
-    if (!isMain) {
-      return {
-        content: [{ type: 'text' as const, text: 'Only the main group can publish Ghost drafts.' }],
-        isError: true,
-      };
-    }
-
     const requestId = `draft-ghost-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     writeIpcFile(TASKS_DIR, {
       type: 'draft_ghost_publish',

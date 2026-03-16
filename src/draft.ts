@@ -106,11 +106,7 @@ export async function handleDraftIpc(
     return false;
   }
 
-  // Only main group can use draft skill
-  if (!isMain) {
-    logger.warn({ sourceGroup, type }, 'Draft skill blocked: not main group');
-    return true;
-  }
+  // Draft skill available to any registered group (host enforces group registration)
 
   const requestId = data.requestId as string;
   if (!requestId) {

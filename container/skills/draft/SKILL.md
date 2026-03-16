@@ -125,6 +125,8 @@ Re-read the voice.md one more time. Then re-read each draft. Fix anything that d
 
 ## Step 8: Publish Drafts
 
+**CRITICAL: Do NOT run git commands (git add, git commit, git push) directly.** You are inside a container without SSH keys — git push will fail. All git operations must go through the MCP tool, which runs on the host where credentials exist.
+
 ### 8a: Git Push
 
 Call the `draft_git_push` MCP tool:
@@ -132,7 +134,7 @@ Call the `draft_git_push` MCP tool:
 mcp__nanoclaw__draft_git_push(directory: "YYYYMMDD-slug")
 ```
 
-This commits the thesis directory and pushes to GitHub. The commit message will be auto-generated.
+This handles git add, commit, AND push on the host side. The commit message will be auto-generated. Do not stage or commit files yourself — the tool does everything.
 
 ### 8b: Ghost Draft
 
@@ -143,12 +145,16 @@ mcp__nanoclaw__draft_ghost_publish(directory: "YYYYMMDD-slug")
 
 This reads `blog-draft.md` from the thesis directory and creates a draft post on Ghost. The title is extracted from the first `#` heading.
 
+### 8c: X/Twitter — Manual Only
+
+**Do NOT try to save X drafts via any tool or MCP call.** X does not support draft saving via API or automation. The `x-draft.md` file is pushed to GitHub as part of Step 8a for the user to manually copy and post.
+
 ## Step 9: Report
 
 Tell the user:
 - What thesis directory was created
 - Summary of the blog draft
-- The tweet draft text (from `x-draft.md`, pushed to GitHub for manual posting)
+- The full tweet text from `x-draft.md` (so they can copy it directly — do NOT say "check x-draft.md", just include the text)
 - Confirmation that changes were pushed to GitHub
 - Confirmation that Ghost draft was created (with URL)
 
