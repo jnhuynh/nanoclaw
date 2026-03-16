@@ -5,10 +5,19 @@
  * Scripts live in .claude/skills/draft/scripts/ and run as subprocesses.
  */
 
-import { spawn } from 'child_process';
+import { spawn, execSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import { logger } from './logger.js';
+import { readEnvFile } from './env.js';
+
+// Read draft-related secrets from .env once at module load
+const draftEnv = readEnvFile([
+  'GHOST_URL',
+  'GHOST_ADMIN_API_KEY',
+  'DRAFT_BLOG_REPO_PATH',
+  'DRAFT_GIT_BRANCH',
+]);
 
 interface SkillResult {
   success: boolean;
@@ -28,15 +37,45 @@ async function runScript(script: string, args: object): Promise<SkillResult> {
   );
 
   return new Promise((resolve) => {
-    const proc = spawn('npx', ['tsx', scriptPath], {
+    // Merge .env secrets + process.env for the subprocess
+    const env: Record<string, string | undefined> = {
+      ...process.env,
+      ...draftEnv,
+      NANOCLAW_ROOT: process.cwd(),
+    };
+    if (!env.SSH_AUTH_SOCK) {
+      try {
+        const sock = execSync('launchctl getenv SSH_AUTH_SOCK', {
+          encoding: 'utf-8',
+          timeout: 5000,
+        }).trim();
+        if (sock) env.SSH_AUTH_SOCK = sock;
+      } catch {
+        // SSH agent not available — git push over SSH will fail
+      }
+    }
+
+    // Ensure the real node binary dir is in PATH (asdf shims can fail under launchd)
+    const nodeBinDir = path.dirname(process.execPath);
+    if (env.PATH && !env.PATH.includes(nodeBinDir)) {
+      env.PATH = `${nodeBinDir}:${env.PATH}`;
+    }
+
+    // Use local tsx binary instead of npx (avoids PATH/shim issues in launchd)
+    const tsxBin = path.join(process.cwd(), 'node_modules', '.bin', 'tsx');
+    const proc = spawn(tsxBin, [scriptPath], {
       cwd: process.cwd(),
-      env: { ...process.env, NANOCLAW_ROOT: process.cwd() },
+      env,
       stdio: ['pipe', 'pipe', 'pipe'],
     });
 
     let stdout = '';
+    let stderr = '';
     proc.stdout.on('data', (data: Buffer) => {
       stdout += data.toString();
+    });
+    proc.stderr.on('data', (data: Buffer) => {
+      stderr += data.toString();
     });
     proc.stdin.write(JSON.stringify(args));
     proc.stdin.end();
@@ -51,7 +90,7 @@ async function runScript(script: string, args: object): Promise<SkillResult> {
       if (code !== 0) {
         resolve({
           success: false,
-          message: `Script exited with code: ${code}`,
+          message: `Script exited with code ${code}: ${stderr.slice(0, 500)}`,
         });
         return;
       }
