@@ -27,6 +27,7 @@ import {
   PROXY_BIND_HOST,
 } from './container-runtime.js';
 import {
+  deleteSession,
   getAllChats,
   getAllRegisteredGroups,
   getAllSessions,
@@ -537,14 +538,50 @@ async function main(): Promise<void> {
     }
   }
 
+  // /new command handler — reset session for a group
+  async function handleNewSession(chatJid: string): Promise<void> {
+    const group = registeredGroups[chatJid];
+    if (!group) return;
+
+    const channel = findChannel(channels, chatJid);
+    if (!channel) return;
+
+    // Close any active container for this group
+    queue.closeStdin(chatJid);
+
+    // Clear the session so the next agent invocation starts fresh
+    delete sessions[group.folder];
+    deleteSession(group.folder);
+
+    // Advance the message cursor to now so old messages aren't re-sent
+    lastAgentTimestamp[chatJid] = new Date().toISOString();
+    saveState();
+
+    logger.info({ group: group.name, chatJid }, '/new: session reset');
+    await channel.sendMessage(
+      chatJid,
+      'Session cleared. Next message starts a fresh conversation.',
+    );
+  }
+
   // Channel callbacks (shared by all channels)
   const channelOpts = {
     onMessage: (chatJid: string, msg: NewMessage) => {
-      // Remote control commands — intercept before storage
+      // Intercept commands before storage
       const trimmed = msg.content.trim();
+
+      // Remote control commands
       if (trimmed === '/remote-control' || trimmed === '/remote-control-end') {
         handleRemoteControl(trimmed, chatJid, msg).catch((err) =>
           logger.error({ err, chatJid }, 'Remote control command error'),
+        );
+        return;
+      }
+
+      // /new — clear session to start fresh (any registered group)
+      if (trimmed === '/new') {
+        handleNewSession(chatJid).catch((err) =>
+          logger.error({ err, chatJid }, '/new command error'),
         );
         return;
       }
