@@ -606,7 +606,10 @@ async function main(): Promise<void> {
     // Build Obsidian context so the agent can find related notes
     const ipcDir = resolveGroupIpcPath(group.folder);
     await buildObsidianContext(content, ipcDir).catch((err) =>
-      logger.warn({ err }, 'Failed to build obsidian context for draft (non-fatal)'),
+      logger.warn(
+        { err },
+        'Failed to build obsidian context for draft (non-fatal)',
+      ),
     );
 
     // Store the message with trigger prefix + draft markers so the agent
@@ -665,7 +668,8 @@ async function main(): Promise<void> {
         handleDraftCommand(
           chatJid,
           msg,
-          draftContent || '(No topic specified — ask the user what they want to draft)',
+          draftContent ||
+            '(No topic specified — ask the user what they want to draft)',
         ).catch((err) =>
           logger.error({ err, chatJid }, '/draft command error'),
         );

@@ -18,17 +18,26 @@ interface SkillResult {
 
 // Run a skill script as subprocess
 async function runScript(script: string, args: object): Promise<SkillResult> {
-  const scriptPath = path.join(process.cwd(), '.claude', 'skills', 'draft', 'scripts', `${script}.ts`);
+  const scriptPath = path.join(
+    process.cwd(),
+    '.claude',
+    'skills',
+    'draft',
+    'scripts',
+    `${script}.ts`,
+  );
 
   return new Promise((resolve) => {
     const proc = spawn('npx', ['tsx', scriptPath], {
       cwd: process.cwd(),
       env: { ...process.env, NANOCLAW_ROOT: process.cwd() },
-      stdio: ['pipe', 'pipe', 'pipe']
+      stdio: ['pipe', 'pipe', 'pipe'],
     });
 
     let stdout = '';
-    proc.stdout.on('data', (data: Buffer) => { stdout += data.toString(); });
+    proc.stdout.on('data', (data: Buffer) => {
+      stdout += data.toString();
+    });
     proc.stdin.write(JSON.stringify(args));
     proc.stdin.end();
 
@@ -40,14 +49,20 @@ async function runScript(script: string, args: object): Promise<SkillResult> {
     proc.on('close', (code) => {
       clearTimeout(timer);
       if (code !== 0) {
-        resolve({ success: false, message: `Script exited with code: ${code}` });
+        resolve({
+          success: false,
+          message: `Script exited with code: ${code}`,
+        });
         return;
       }
       try {
         const lines = stdout.trim().split('\n');
         resolve(JSON.parse(lines[lines.length - 1]));
       } catch {
-        resolve({ success: false, message: `Failed to parse output: ${stdout.slice(0, 200)}` });
+        resolve({
+          success: false,
+          message: `Failed to parse output: ${stdout.slice(0, 200)}`,
+        });
       }
     });
 
@@ -59,10 +74,18 @@ async function runScript(script: string, args: object): Promise<SkillResult> {
 }
 
 // Write result to IPC results directory
-function writeResult(dataDir: string, sourceGroup: string, requestId: string, result: SkillResult): void {
+function writeResult(
+  dataDir: string,
+  sourceGroup: string,
+  requestId: string,
+  result: SkillResult,
+): void {
   const resultsDir = path.join(dataDir, 'ipc', sourceGroup, 'draft_results');
   fs.mkdirSync(resultsDir, { recursive: true });
-  fs.writeFileSync(path.join(resultsDir, `${requestId}.json`), JSON.stringify(result));
+  fs.writeFileSync(
+    path.join(resultsDir, `${requestId}.json`),
+    JSON.stringify(result),
+  );
 }
 
 /**
@@ -74,7 +97,7 @@ export async function handleDraftIpc(
   data: Record<string, unknown>,
   sourceGroup: string,
   isMain: boolean,
-  dataDir: string
+  dataDir: string,
 ): Promise<boolean> {
   const type = data.type as string;
 
@@ -127,7 +150,10 @@ export async function handleDraftIpc(
   if (result.success) {
     logger.info({ type, requestId }, 'Draft request completed');
   } else {
-    logger.error({ type, requestId, message: result.message }, 'Draft request failed');
+    logger.error(
+      { type, requestId, message: result.message },
+      'Draft request failed',
+    );
   }
   return true;
 }

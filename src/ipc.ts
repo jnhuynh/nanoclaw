@@ -487,7 +487,12 @@ export async function processTaskIpc(
 
     default: {
       // Try skill-specific IPC handlers
-      const handled = await handleDraftIpc(data as Record<string, unknown>, sourceGroup, isMain, DATA_DIR);
+      const handled = await handleDraftIpc(
+        data as Record<string, unknown>,
+        sourceGroup,
+        isMain,
+        DATA_DIR,
+      );
       if (!handled) {
         logger.warn({ type: data.type }, 'Unknown IPC task type');
       }
