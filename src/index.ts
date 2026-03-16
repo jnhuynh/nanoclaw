@@ -51,7 +51,7 @@ import {
   startRemoteControl,
   stopRemoteControl,
 } from './remote-control.js';
-import { restoreSimpsons } from './simpsons.js';
+import { ensureStatusReporter, restoreSimpsons } from './simpsons.js';
 import {
   isSenderAllowed,
   isTriggerAllowed,
@@ -634,15 +634,17 @@ async function main(): Promise<void> {
     writeGroupsSnapshot: (gf, im, ag, rj) =>
       writeGroupsSnapshot(gf, im, ag, rj),
   });
-  // Restore simpsons tmux sessions that survived the restart
-  restoreSimpsons((jid, text) => {
+  // Simpsons: restore surviving tmux sessions and start the 15-minute status reporter
+  const simpsonsSendMessage = (jid: string, text: string) => {
     const channel = findChannel(channels, jid);
     if (!channel) {
-      logger.warn({ jid }, 'No channel for simpsons restore message');
+      logger.warn({ jid }, 'No channel for simpsons message');
       return Promise.resolve();
     }
     return channel.sendMessage(jid, text);
-  });
+  };
+  restoreSimpsons(simpsonsSendMessage);
+  ensureStatusReporter(simpsonsSendMessage);
 
   queue.setProcessMessagesFn(processGroupMessages);
   recoverPendingMessages();

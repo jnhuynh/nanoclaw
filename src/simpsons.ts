@@ -6,10 +6,14 @@ import path from 'path';
 import { DATA_DIR } from './config.js';
 import { logger } from './logger.js';
 
+// ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+
 const PROJECTS_DIR = path.join(os.homedir(), 'Projects');
 const DELIMITER = '<!-- ====== PROJECT SPECIFIC ====== -->';
 const SIMPSONS_DIR = path.join(DATA_DIR, 'simpsons');
-const STATE_FILE = path.join(DATA_DIR, 'simpsons', 'sessions.json');
+const STATE_FILE = path.join(SIMPSONS_DIR, 'sessions.json');
 const TRUST_CHECK_DELAY = 60_000; // 60 seconds
 const POLL_INTERVAL = 5 * 60_000; // 5 minutes
 const STATUS_INTERVAL = 15 * 60_000; // 15 minutes
@@ -24,6 +28,691 @@ const COMMAND_MAP: Record<string, string> = {
   analyze: '/speckit.lisa.analyze',
   lisa: '/speckit.lisa.analyze',
 };
+
+const SKILL_REPOS: Array<{ url: string; dirName: string }> = [
+  { url: 'https://github.com/github/spec-kit.git', dirName: 'spec-kit' },
+  {
+    url: 'https://github.com/jnhuynh/spec-kit-simpsons-loops.git',
+    dirName: 'spec-kit-simpsons-loops',
+  },
+];
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
+interface SimpsonsSession {
+  name: string;
+  outputFile: string;
+  doneFile: string;
+  scriptFile: string;
+}
+
+interface ActiveSession {
+  session: SimpsonsSession;
+  project: string;
+  command: string;
+  chatJid: string;
+  startedAt: Date;
+}
+
+interface PersistedSession {
+  sessionName: string;
+  project: string;
+  command: string;
+  chatJid: string;
+  startedAt: string; // ISO timestamp
+  outputFile: string;
+  doneFile: string;
+  scriptFile: string;
+}
+
+// ---------------------------------------------------------------------------
+// Module state
+// ---------------------------------------------------------------------------
+
+const activeSessions = new Map<string, ActiveSession>();
+let statusTimer: ReturnType<typeof setInterval> | null = null;
+let statusSendMessage: ((jid: string, text: string) => Promise<void>) | null =
+  null;
+
+// ---------------------------------------------------------------------------
+// Utilities
+// ---------------------------------------------------------------------------
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function shellQuote(s: string): string {
+  return "'" + s.replace(/'/g, "'\\''") + "'";
+}
+
+function sanitizeSessionName(s: string): string {
+  return s.replace(/[^a-zA-Z0-9_-]/g, '-');
+}
+
+function tmuxSessionAlive(sessionName: string): boolean {
+  try {
+    execSync(`tmux has-session -t ${shellQuote(sessionName)} 2>/dev/null`);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function safeRead(filePath: string): string {
+  try {
+    return fs.existsSync(filePath) ? fs.readFileSync(filePath, 'utf-8') : '';
+  } catch {
+    return '';
+  }
+}
+
+function formatDuration(ms: number): string {
+  const mins = Math.floor(ms / 60_000);
+  if (mins < 60) return `${mins}m`;
+  const hours = Math.floor(mins / 60);
+  const remainMins = mins % 60;
+  return remainMins > 0 ? `${hours}h ${remainMins}m` : `${hours}h`;
+}
+
+// ---------------------------------------------------------------------------
+// Session state persistence (survives NanoClaw restarts)
+// ---------------------------------------------------------------------------
+
+function persistState(): void {
+  const entries: PersistedSession[] = [];
+  for (const s of activeSessions.values()) {
+    entries.push({
+      sessionName: s.session.name,
+      project: s.project,
+      command: s.command,
+      chatJid: s.chatJid,
+      startedAt: s.startedAt.toISOString(),
+      outputFile: s.session.outputFile,
+      doneFile: s.session.doneFile,
+      scriptFile: s.session.scriptFile,
+    });
+  }
+  fs.mkdirSync(path.dirname(STATE_FILE), { recursive: true });
+  const tmp = STATE_FILE + '.tmp';
+  fs.writeFileSync(tmp, JSON.stringify(entries, null, 2));
+  fs.renameSync(tmp, STATE_FILE);
+}
+
+function loadPersistedState(): PersistedSession[] {
+  try {
+    if (!fs.existsSync(STATE_FILE)) return [];
+    return JSON.parse(fs.readFileSync(STATE_FILE, 'utf-8'));
+  } catch {
+    return [];
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Status reporter (15-minute consolidated updates)
+// ---------------------------------------------------------------------------
+
+export function ensureStatusReporter(
+  sendMessage: (jid: string, text: string) => Promise<void>,
+): void {
+  statusSendMessage = sendMessage;
+  if (statusTimer) return;
+  statusTimer = setInterval(() => {
+    reportStatus().catch((err) =>
+      logger.error({ err }, 'Simpsons status report failed'),
+    );
+  }, STATUS_INTERVAL);
+}
+
+async function reportStatus(): Promise<void> {
+  if (activeSessions.size === 0 || !statusSendMessage) return;
+
+  // Group sessions by chatJid so each chat gets one consolidated message
+  const byChat = new Map<string, ActiveSession[]>();
+  for (const s of activeSessions.values()) {
+    const list = byChat.get(s.chatJid) || [];
+    list.push(s);
+    byChat.set(s.chatJid, list);
+  }
+
+  for (const [chatJid, sessions] of byChat) {
+    const lines: string[] = [`*Active Simpsons Sessions (${sessions.length})*`];
+
+    for (const s of sessions) {
+      const elapsed = formatDuration(Date.now() - s.startedAt.getTime());
+      lines.push('');
+      lines.push(`• *${s.project}* (${s.command}) — ${elapsed}`);
+
+      const activity = getSessionActivity(s.session.name);
+      if (activity) {
+        lines.push(`  ${activity}`);
+      }
+
+      lines.push(`  tmux attach -t ${s.session.name}`);
+    }
+
+    await statusSendMessage(chatJid, lines.join('\n'));
+  }
+}
+
+/** Capture the last non-empty line from the tmux pane to show current activity. */
+function getSessionActivity(sessionName: string): string {
+  if (!tmuxSessionAlive(sessionName)) return 'session ended';
+
+  try {
+    const pane = execSync(
+      `tmux capture-pane -t ${shellQuote(sessionName)} -p`,
+      { encoding: 'utf-8' },
+    );
+    const lines = pane.split('\n').filter((l) => l.trim().length > 0);
+    const last = lines[lines.length - 1]?.trim() || '';
+    return last.length > 120 ? last.slice(0, 120) + '...' : last;
+  } catch {
+    return '';
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Startup restoration
+// ---------------------------------------------------------------------------
+
+/**
+ * Restore simpsons sessions after a NanoClaw restart.
+ * Live tmux sessions get re-attached to polling.
+ * Dead sessions are pruned and the user is notified.
+ */
+export function restoreSimpsons(
+  sendMessage: (jid: string, text: string) => Promise<void>,
+): void {
+  const persisted = loadPersistedState();
+  if (persisted.length === 0) return;
+
+  const alive: PersistedSession[] = [];
+  const dead: PersistedSession[] = [];
+
+  for (const p of persisted) {
+    (tmuxSessionAlive(p.sessionName) ? alive : dead).push(p);
+  }
+
+  for (const p of alive) {
+    const session: SimpsonsSession = {
+      name: p.sessionName,
+      outputFile: p.outputFile,
+      doneFile: p.doneFile,
+      scriptFile: p.scriptFile,
+    };
+
+    activeSessions.set(p.sessionName, {
+      session,
+      project: p.project,
+      command: p.command,
+      chatJid: p.chatJid,
+      startedAt: new Date(p.startedAt),
+    });
+
+    pollAndFinalize(session, p.project, p.command, p.chatJid, sendMessage);
+  }
+
+  if (alive.length > 0) {
+    logger.info(
+      { count: alive.length, sessions: alive.map((s) => s.sessionName) },
+      'Restored simpsons sessions after restart',
+    );
+  }
+
+  if (dead.length > 0) {
+    logger.info(
+      { count: dead.length, sessions: dead.map((s) => s.sessionName) },
+      'Cleaned up dead simpsons sessions',
+    );
+
+    const byChat = new Map<string, string[]>();
+    for (const d of dead) {
+      const list = byChat.get(d.chatJid) || [];
+      list.push(`${d.project} (${d.command})`);
+      byChat.set(d.chatJid, list);
+    }
+    for (const [chatJid, names] of byChat) {
+      sendMessage(
+        chatJid,
+        `Simpsons sessions ended while NanoClaw was down:\n${names.map((n) => `• ${n}`).join('\n')}`,
+      ).catch(() => {});
+    }
+
+    persistState();
+  }
+}
+
+/** Poll a restored session to completion, then finalize. */
+function pollAndFinalize(
+  session: SimpsonsSession,
+  project: string,
+  command: string,
+  chatJid: string,
+  sendMessage: (jid: string, text: string) => Promise<void>,
+): void {
+  pollForCompletion(session)
+    .then(async (result) => {
+      const output = truncateOutput(result);
+      await sendMessage(
+        chatJid,
+        `Simpsons ${command} on ${project} complete:\n\n${output}`,
+      );
+    })
+    .catch(async (err) => {
+      logger.error(
+        { err, project, command },
+        'Restored simpsons session failed',
+      );
+      await sendMessage(
+        chatJid,
+        `Simpsons ${command} on ${project} failed: ${err instanceof Error ? err.message : String(err)}`,
+      ).catch(() => {});
+    })
+    .finally(() => {
+      activeSessions.delete(session.name);
+      persistState();
+    });
+}
+
+// ---------------------------------------------------------------------------
+// Main command handler
+// ---------------------------------------------------------------------------
+
+export async function handleSimpsons(
+  data: { project: string; command: string; prompt?: string },
+  chatJid: string,
+  sendMessage: (jid: string, text: string) => Promise<void>,
+): Promise<void> {
+  const { project, command, prompt } = data;
+  const projectDir = path.join(PROJECTS_DIR, project);
+
+  if (!fs.existsSync(projectDir)) {
+    await sendMessage(chatJid, `Project "${project}" not found in ~/Projects`);
+    return;
+  }
+
+  const specCommand = COMMAND_MAP[command.toLowerCase()];
+  if (!specCommand) {
+    const available = Object.keys(COMMAND_MAP).join(', ');
+    await sendMessage(
+      chatJid,
+      `Unknown simpsons command: "${command}". Available: ${available}`,
+    );
+    return;
+  }
+
+  let session: SimpsonsSession | undefined;
+
+  try {
+    // Setup phase — fast, synchronous
+    ensureSkills(projectDir);
+    mergeGlobalFile(projectDir, 'CLAUDE.md', GLOBAL_CLAUDE_MD);
+    mergeGlobalFile(
+      projectDir,
+      path.join('.specify', 'memory', 'constitution.md'),
+      GLOBAL_CONSTITUTION,
+    );
+    ensureQualityGates(projectDir);
+
+    // Launch claude in a tmux session
+    session = startClaudeSession(projectDir, specCommand, prompt || '');
+
+    activeSessions.set(session.name, {
+      session,
+      project,
+      command,
+      chatJid,
+      startedAt: new Date(),
+    });
+    persistState();
+
+    await sendMessage(
+      chatJid,
+      `Simpsons ${command} on ${project} started\ntmux attach -t ${session.name}`,
+    );
+
+    // After 60s, check for trust directory prompt and auto-confirm
+    await sleep(TRUST_CHECK_DELAY);
+    handleTrustPrompt(session.name);
+
+    // Poll until claude finishes (no timeout — pipelines can run for hours)
+    const result = await pollForCompletion(session);
+
+    await sendMessage(
+      chatJid,
+      `Simpsons ${command} on ${project} complete:\n\n${truncateOutput(result)}`,
+    );
+  } catch (err) {
+    const errMsg = err instanceof Error ? err.message : String(err);
+    logger.error({ err, project, command }, 'Simpsons command failed');
+    await sendMessage(
+      chatJid,
+      `Simpsons ${command} on ${project} failed: ${errMsg}`,
+    );
+  } finally {
+    if (session) {
+      activeSessions.delete(session.name);
+      persistState();
+    }
+  }
+}
+
+function truncateOutput(result: string): string {
+  const maxLen = 4000;
+  return result.length > maxLen
+    ? result.slice(0, maxLen) + '\n... (output truncated)'
+    : result;
+}
+
+// ---------------------------------------------------------------------------
+// tmux session management
+// ---------------------------------------------------------------------------
+
+function startClaudeSession(
+  projectDir: string,
+  specCommand: string,
+  prompt: string,
+): SimpsonsSession {
+  try {
+    execSync('which claude', { stdio: 'pipe' });
+  } catch {
+    throw new Error(
+      'claude CLI not found. Install: npm install -g @anthropic-ai/claude-code',
+    );
+  }
+
+  fs.mkdirSync(SIMPSONS_DIR, { recursive: true });
+
+  const project = path.basename(projectDir);
+  const ts = Date.now().toString(36);
+  const sessionName = sanitizeSessionName(`simpsons-${project}-${ts}`);
+  const outputFile = path.join(SIMPSONS_DIR, `${sessionName}.log`);
+  const doneFile = path.join(SIMPSONS_DIR, `${sessionName}.done`);
+  const scriptFile = path.join(SIMPSONS_DIR, `${sessionName}.sh`);
+
+  const fullPrompt = prompt ? `${specCommand} ${prompt}` : specCommand;
+
+  fs.writeFileSync(
+    scriptFile,
+    `#!/usr/bin/env bash
+set -o pipefail
+cd ${shellQuote(projectDir)}
+claude -p ${shellQuote(fullPrompt)} --dangerously-skip-permissions 2>&1 | tee ${shellQuote(outputFile)}
+echo \${PIPESTATUS[0]} > ${shellQuote(doneFile)}
+`,
+    { mode: 0o755 },
+  );
+
+  execSync(
+    `tmux new-session -d -s ${shellQuote(sessionName)} -c ${shellQuote(projectDir)} ${shellQuote(scriptFile)}`,
+  );
+
+  logger.info(
+    { sessionName, project, specCommand },
+    'Started simpsons tmux session',
+  );
+
+  return { name: sessionName, outputFile, doneFile, scriptFile };
+}
+
+/** Check the tmux pane for a trust-directory prompt and auto-confirm. */
+function handleTrustPrompt(sessionName: string): void {
+  if (!tmuxSessionAlive(sessionName)) return;
+
+  try {
+    const pane = execSync(
+      `tmux capture-pane -t ${shellQuote(sessionName)} -p`,
+      { encoding: 'utf-8' },
+    );
+
+    if (/trust/i.test(pane)) {
+      execSync(`tmux send-keys -t ${shellQuote(sessionName)} y Enter`);
+      logger.info({ sessionName }, 'Sent trust confirmation to tmux session');
+    }
+  } catch (err) {
+    logger.warn({ err, sessionName }, 'Failed to check/handle trust prompt');
+  }
+}
+
+/** Poll the done-file until claude finishes. No timeout. */
+function pollForCompletion(session: SimpsonsSession): Promise<string> {
+  return new Promise((resolve) => {
+    const check = () => {
+      if (fs.existsSync(session.doneFile)) {
+        const output = safeRead(session.outputFile);
+        cleanup(session);
+        resolve(output);
+        return;
+      }
+
+      if (tmuxSessionAlive(session.name)) {
+        setTimeout(check, POLL_INTERVAL);
+      } else {
+        // Session gone without a done file — wait for filesystem flush
+        setTimeout(() => {
+          const output = safeRead(session.outputFile);
+          cleanup(session);
+          resolve(output);
+        }, 2000);
+      }
+    };
+
+    check();
+  });
+}
+
+function cleanup(session: SimpsonsSession): void {
+  for (const f of [session.doneFile, session.scriptFile]) {
+    try {
+      fs.unlinkSync(f);
+    } catch {
+      // ignore
+    }
+  }
+  // Keep outputFile — user may want to review it
+}
+
+// ---------------------------------------------------------------------------
+// Project setup helpers
+// ---------------------------------------------------------------------------
+
+function ensureSkills(projectDir: string): void {
+  const skillsDir = path.join(projectDir, '.claude', 'skills');
+  fs.mkdirSync(skillsDir, { recursive: true });
+
+  for (const { url, dirName } of SKILL_REPOS) {
+    ensureGitSkill(skillsDir, url, dirName);
+  }
+}
+
+function ensureGitSkill(
+  skillsDir: string,
+  repoUrl: string,
+  dirName: string,
+): void {
+  const targetDir = path.join(skillsDir, dirName);
+
+  if (fs.existsSync(path.join(targetDir, '.git'))) {
+    try {
+      execSync('git pull --ff-only', { cwd: targetDir, stdio: 'pipe' });
+    } catch {
+      logger.warn(
+        { dir: targetDir },
+        `${dirName} git pull failed, using existing`,
+      );
+    }
+  } else {
+    if (fs.existsSync(targetDir)) {
+      fs.rmSync(targetDir, { recursive: true });
+    }
+    execSync(`git clone ${repoUrl} ${dirName}`, {
+      cwd: skillsDir,
+      stdio: 'pipe',
+    });
+  }
+
+  logger.info({ dirName }, 'Skill ensured');
+}
+
+/**
+ * Merge a global template with project-specific content.
+ * Everything before the delimiter is replaced with the latest global content.
+ * Everything from the delimiter onwards (project-specific section) is preserved.
+ */
+function mergeGlobalFile(
+  projectDir: string,
+  relPath: string,
+  globalContent: string,
+): void {
+  const fullPath = path.join(projectDir, relPath);
+  fs.mkdirSync(path.dirname(fullPath), { recursive: true });
+
+  if (!fs.existsSync(fullPath)) {
+    fs.writeFileSync(fullPath, globalContent);
+    return;
+  }
+
+  const existing = fs.readFileSync(fullPath, 'utf-8');
+  const delimIdx = existing.indexOf(DELIMITER);
+
+  if (delimIdx === -1) {
+    // No delimiter — treat entire existing content as project-specific
+    fs.writeFileSync(fullPath, globalContent + '\n\n' + existing);
+    return;
+  }
+
+  // Keep the project-specific section (from delimiter onwards)
+  const projectSection = existing.slice(delimIdx);
+
+  // Take global content up to (but not including) the delimiter
+  const globalDelimIdx = globalContent.indexOf(DELIMITER);
+  const globalPart =
+    globalDelimIdx !== -1
+      ? globalContent.slice(0, globalDelimIdx)
+      : globalContent + '\n\n';
+
+  fs.writeFileSync(fullPath, globalPart + projectSection);
+}
+
+/**
+ * Ensure .specify/quality-gates.sh exists.
+ * Never overwrites an existing file.
+ */
+function ensureQualityGates(projectDir: string): void {
+  const qgPath = path.join(projectDir, '.specify', 'quality-gates.sh');
+  if (fs.existsSync(qgPath)) return;
+
+  fs.mkdirSync(path.join(projectDir, '.specify'), { recursive: true });
+  fs.writeFileSync(qgPath, generateQualityGates(projectDir), { mode: 0o755 });
+  logger.info({ projectDir }, 'Generated quality-gates.sh');
+}
+
+function generateQualityGates(projectDir: string): string {
+  const checks: string[] = [];
+
+  // Node.js
+  const pkgPath = path.join(projectDir, 'package.json');
+  if (fs.existsSync(pkgPath)) {
+    try {
+      const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
+      const scripts = pkg.scripts || {};
+      const devDeps = pkg.devDependencies || {};
+
+      if (scripts.test) {
+        checks.push('echo "Running tests..."', 'npm test');
+      }
+      if (scripts.lint) {
+        checks.push('echo "Running linter..."', 'npm run lint');
+      }
+      if (scripts.typecheck) {
+        checks.push('echo "Running type check..."', 'npm run typecheck');
+      } else if (scripts['type-check']) {
+        checks.push('echo "Running type check..."', 'npm run type-check');
+      } else if (devDeps.typescript || pkg.dependencies?.typescript) {
+        checks.push('echo "Running type check..."', 'npx tsc --noEmit');
+      }
+    } catch {
+      checks.push('echo "Warning: could not parse package.json"');
+    }
+  }
+
+  // Ruby
+  if (fs.existsSync(path.join(projectDir, 'Gemfile'))) {
+    checks.push('echo "Running tests..."', 'bundle exec rspec');
+    if (fs.existsSync(path.join(projectDir, '.rubocop.yml'))) {
+      checks.push('echo "Running linter..."', 'bundle exec rubocop');
+    }
+  }
+
+  // Python
+  if (
+    fs.existsSync(path.join(projectDir, 'pyproject.toml')) ||
+    fs.existsSync(path.join(projectDir, 'requirements.txt'))
+  ) {
+    checks.push('echo "Running tests..."', 'pytest');
+    const pyprojectPath = path.join(projectDir, 'pyproject.toml');
+    if (fs.existsSync(pyprojectPath)) {
+      try {
+        const content = fs.readFileSync(pyprojectPath, 'utf-8');
+        if (content.includes('ruff')) {
+          checks.push('echo "Running linter..."', 'ruff check .');
+        } else if (content.includes('flake8')) {
+          checks.push('echo "Running linter..."', 'flake8 .');
+        }
+        if (content.includes('mypy')) {
+          checks.push('echo "Running type check..."', 'mypy .');
+        }
+      } catch {
+        // ignore parse errors
+      }
+    }
+  }
+
+  // Go
+  if (fs.existsSync(path.join(projectDir, 'go.mod'))) {
+    checks.push(
+      'echo "Running tests..."',
+      'go test ./...',
+      'echo "Running vet..."',
+      'go vet ./...',
+    );
+  }
+
+  // Rust
+  if (fs.existsSync(path.join(projectDir, 'Cargo.toml'))) {
+    checks.push(
+      'echo "Running tests..."',
+      'cargo test',
+      'echo "Running clippy..."',
+      'cargo clippy -- -D warnings',
+    );
+  }
+
+  if (checks.length === 0) {
+    checks.push(
+      'echo "No quality gates configured - add checks for your project type"',
+      'exit 0',
+    );
+  }
+
+  return `#!/usr/bin/env bash
+set -euo pipefail
+
+# Quality gates for speckit pipeline
+# Auto-generated based on project structure — edit as needed
+
+${checks.join('\n')}
+
+echo "All quality gates passed!"
+`;
+}
+
+// ---------------------------------------------------------------------------
+// Global templates
+// ---------------------------------------------------------------------------
 
 // prettier-ignore
 const GLOBAL_CLAUDE_MD = `# Development Guidelines
@@ -256,766 +945,3 @@ may be added, refined, or deprecated based on project needs and lessons learned.
 ${DELIMITER}
 
 <!-- Add project-specific standards below (language tooling, formatting, lint rules, etc.) -->`;
-
-export function getAvailableCommands(): string[] {
-  return Object.keys(COMMAND_MAP);
-}
-
-// ---------------------------------------------------------------------------
-// Session state persistence (survives NanoClaw restarts)
-// ---------------------------------------------------------------------------
-
-interface PersistedSession {
-  sessionName: string;
-  project: string;
-  command: string;
-  chatJid: string;
-  startedAt: string; // ISO timestamp
-  outputFile: string;
-  doneFile: string;
-  scriptFile: string;
-}
-
-function persistState(): void {
-  const entries: PersistedSession[] = [];
-  for (const s of activeSessions.values()) {
-    entries.push({
-      sessionName: s.session.name,
-      project: s.project,
-      command: s.command,
-      chatJid: s.chatJid,
-      startedAt: s.startedAt.toISOString(),
-      outputFile: s.session.outputFile,
-      doneFile: s.session.doneFile,
-      scriptFile: s.session.scriptFile,
-    });
-  }
-  fs.mkdirSync(path.dirname(STATE_FILE), { recursive: true });
-  const tmp = STATE_FILE + '.tmp';
-  fs.writeFileSync(tmp, JSON.stringify(entries, null, 2));
-  fs.renameSync(tmp, STATE_FILE);
-}
-
-function loadPersistedState(): PersistedSession[] {
-  try {
-    if (!fs.existsSync(STATE_FILE)) return [];
-    return JSON.parse(fs.readFileSync(STATE_FILE, 'utf-8'));
-  } catch {
-    return [];
-  }
-}
-
-function tmuxSessionAlive(sessionName: string): boolean {
-  try {
-    execSync(`tmux has-session -t ${shellQuote(sessionName)} 2>/dev/null`);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-/**
- * Restore simpsons sessions after a NanoClaw restart.
- * - Live tmux sessions get re-attached to polling + status reporting.
- * - Dead sessions are pruned and reported.
- */
-export function restoreSimpsons(
-  sendMessage: (jid: string, text: string) => Promise<void>,
-): void {
-  const persisted = loadPersistedState();
-  if (persisted.length === 0) return;
-
-  const alive: PersistedSession[] = [];
-  const dead: PersistedSession[] = [];
-
-  for (const p of persisted) {
-    if (tmuxSessionAlive(p.sessionName)) {
-      alive.push(p);
-    } else {
-      dead.push(p);
-    }
-  }
-
-  // Re-attach live sessions to polling
-  for (const p of alive) {
-    const session: SimpsonsSession = {
-      name: p.sessionName,
-      outputFile: p.outputFile,
-      doneFile: p.doneFile,
-      scriptFile: p.scriptFile,
-    };
-
-    const active: ActiveSession = {
-      session,
-      project: p.project,
-      command: p.command,
-      chatJid: p.chatJid,
-      startedAt: new Date(p.startedAt),
-    };
-
-    activeSessions.set(p.sessionName, active);
-
-    // Re-start async polling for this session (fire-and-forget)
-    pollAndFinalize(session, p.project, p.command, p.chatJid, sendMessage);
-  }
-
-  if (alive.length > 0) {
-    ensureStatusReporter(sendMessage);
-    logger.info(
-      { count: alive.length, sessions: alive.map((s) => s.sessionName) },
-      'Restored simpsons sessions after restart',
-    );
-  }
-
-  // Clean up dead sessions and notify
-  if (dead.length > 0) {
-    const deadNames = dead.map((s) => `${s.project} (${s.command})`);
-    logger.info(
-      { count: dead.length, sessions: dead.map((s) => s.sessionName) },
-      'Cleaned up dead simpsons sessions',
-    );
-
-    // Group dead sessions by chatJid and notify
-    const byChat = new Map<string, string[]>();
-    for (const d of dead) {
-      const list = byChat.get(d.chatJid) || [];
-      list.push(`${d.project} (${d.command})`);
-      byChat.set(d.chatJid, list);
-    }
-    for (const [chatJid, names] of byChat) {
-      sendMessage(
-        chatJid,
-        `Simpsons sessions ended while NanoClaw was down:\n${names.map((n) => `• ${n}`).join('\n')}`,
-      ).catch(() => {});
-    }
-  }
-
-  // Persist the cleaned-up state
-  if (dead.length > 0) {
-    persistState();
-  }
-}
-
-/**
- * Poll a restored session to completion, then finalize.
- */
-function pollAndFinalize(
-  session: SimpsonsSession,
-  project: string,
-  command: string,
-  chatJid: string,
-  sendMessage: (jid: string, text: string) => Promise<void>,
-): void {
-  pollForCompletion(session)
-    .then(async (result) => {
-      const maxLen = 4000;
-      const output =
-        result.length > maxLen
-          ? result.slice(0, maxLen) + '\n... (output truncated)'
-          : result;
-      await sendMessage(
-        chatJid,
-        `Simpsons ${command} on ${project} complete:\n\n${output}`,
-      );
-    })
-    .catch(async (err) => {
-      logger.error({ err, project, command }, 'Restored simpsons session failed');
-      await sendMessage(
-        chatJid,
-        `Simpsons ${command} on ${project} failed: ${err instanceof Error ? err.message : String(err)}`,
-      ).catch(() => {});
-    })
-    .finally(() => {
-      activeSessions.delete(session.name);
-      persistState();
-    });
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function shellQuote(s: string): string {
-  return "'" + s.replace(/'/g, "'\\''") + "'";
-}
-
-/**
- * Sanitize a string for use as a tmux session name.
- * tmux session names cannot contain dots or colons.
- */
-function sanitizeSessionName(s: string): string {
-  return s.replace(/[^a-zA-Z0-9_-]/g, '-');
-}
-
-// ---------------------------------------------------------------------------
-// Active session tracking & periodic status reporter
-// ---------------------------------------------------------------------------
-
-interface ActiveSession {
-  session: SimpsonsSession;
-  project: string;
-  command: string;
-  chatJid: string;
-  startedAt: Date;
-}
-
-const activeSessions = new Map<string, ActiveSession>();
-let statusTimer: ReturnType<typeof setInterval> | null = null;
-let statusSendMessage: ((jid: string, text: string) => Promise<void>) | null =
-  null;
-
-function ensureStatusReporter(
-  sendMessage: (jid: string, text: string) => Promise<void>,
-): void {
-  statusSendMessage = sendMessage;
-  if (statusTimer) return;
-  statusTimer = setInterval(() => {
-    reportStatus().catch((err) =>
-      logger.error({ err }, 'Simpsons status report failed'),
-    );
-  }, STATUS_INTERVAL);
-}
-
-async function reportStatus(): Promise<void> {
-  if (activeSessions.size === 0 || !statusSendMessage) return;
-
-  // Group sessions by chatJid so each chat gets one consolidated message
-  const byChat = new Map<string, ActiveSession[]>();
-  for (const s of activeSessions.values()) {
-    const list = byChat.get(s.chatJid) || [];
-    list.push(s);
-    byChat.set(s.chatJid, list);
-  }
-
-  for (const [chatJid, sessions] of byChat) {
-    const lines: string[] = [`*Active Simpsons Sessions (${sessions.length})*`];
-
-    for (const s of sessions) {
-      const elapsed = formatDuration(Date.now() - s.startedAt.getTime());
-      lines.push('');
-      lines.push(`• *${s.project}* (${s.command}) — ${elapsed}`);
-
-      const activity = getSessionActivity(s.session.name);
-      if (activity) {
-        lines.push(`  ${activity}`);
-      }
-
-      lines.push(`  tmux attach -t ${s.session.name}`);
-    }
-
-    await statusSendMessage(chatJid, lines.join('\n'));
-  }
-}
-
-function formatDuration(ms: number): string {
-  const mins = Math.floor(ms / 60_000);
-  if (mins < 60) return `${mins}m`;
-  const hours = Math.floor(mins / 60);
-  const remainMins = mins % 60;
-  return remainMins > 0 ? `${hours}h ${remainMins}m` : `${hours}h`;
-}
-
-/**
- * Capture the last non-empty line from the tmux pane to show current activity.
- */
-function getSessionActivity(sessionName: string): string {
-  try {
-    execSync(`tmux has-session -t ${shellQuote(sessionName)} 2>/dev/null`);
-  } catch {
-    return 'session ended';
-  }
-
-  try {
-    const pane = execSync(
-      `tmux capture-pane -t ${shellQuote(sessionName)} -p`,
-      { encoding: 'utf-8' },
-    );
-    // Find the last non-empty line as a summary of current activity
-    const lines = pane.split('\n').filter((l) => l.trim().length > 0);
-    const last = lines[lines.length - 1]?.trim() || '';
-    // Truncate long lines
-    return last.length > 120 ? last.slice(0, 120) + '...' : last;
-  } catch {
-    return '';
-  }
-}
-
-export async function handleSimpsons(
-  data: { project: string; command: string; prompt?: string },
-  chatJid: string,
-  sendMessage: (jid: string, text: string) => Promise<void>,
-): Promise<void> {
-  const { project, command, prompt } = data;
-  const projectDir = path.join(PROJECTS_DIR, project);
-
-  if (!fs.existsSync(projectDir)) {
-    await sendMessage(
-      chatJid,
-      `Project "${project}" not found in ~/Projects`,
-    );
-    return;
-  }
-
-  const specCommand = COMMAND_MAP[command.toLowerCase()];
-  if (!specCommand) {
-    const available = Object.keys(COMMAND_MAP).join(', ');
-    await sendMessage(
-      chatJid,
-      `Unknown simpsons command: "${command}". Available: ${available}`,
-    );
-    return;
-  }
-
-  let session: SimpsonsSession | undefined;
-
-  try {
-    // Setup phase — fast, synchronous
-    ensureSpeckit(projectDir);
-    ensureSimpsonsLoops(projectDir);
-    mergeGlobalFile(projectDir, 'CLAUDE.md', GLOBAL_CLAUDE_MD);
-    mergeGlobalFile(
-      projectDir,
-      path.join('.specify', 'memory', 'constitution.md'),
-      GLOBAL_CONSTITUTION,
-    );
-    ensureQualityGates(projectDir);
-
-    // Launch claude in a tmux session
-    session = startClaudeSession(projectDir, specCommand, prompt || '');
-
-    // Track session for status reporting and persist to disk
-    activeSessions.set(session.name, {
-      session,
-      project,
-      command,
-      chatJid,
-      startedAt: new Date(),
-    });
-    persistState();
-    ensureStatusReporter(sendMessage);
-
-    await sendMessage(
-      chatJid,
-      `Simpsons ${command} on ${project} started\ntmux attach -t ${session.name}`,
-    );
-
-    // After 60s, check for trust directory prompt and auto-confirm
-    await sleep(TRUST_CHECK_DELAY);
-    handleTrustPrompt(session.name);
-
-    // Poll until claude finishes (no timeout — pipelines can run for hours)
-    const result = await pollForCompletion(session);
-
-    const maxLen = 4000;
-    const output =
-      result.length > maxLen
-        ? result.slice(0, maxLen) + '\n... (output truncated)'
-        : result;
-
-    await sendMessage(
-      chatJid,
-      `Simpsons ${command} on ${project} complete:\n\n${output}`,
-    );
-  } catch (err) {
-    const errMsg = err instanceof Error ? err.message : String(err);
-    logger.error({ err, project, command }, 'Simpsons command failed');
-    await sendMessage(
-      chatJid,
-      `Simpsons ${command} on ${project} failed: ${errMsg}`,
-    );
-  } finally {
-    if (session) {
-      activeSessions.delete(session.name);
-      persistState();
-    }
-  }
-}
-
-// ---------------------------------------------------------------------------
-// tmux session management
-// ---------------------------------------------------------------------------
-
-interface SimpsonsSession {
-  name: string;
-  outputFile: string;
-  doneFile: string;
-  scriptFile: string;
-}
-
-function startClaudeSession(
-  projectDir: string,
-  specCommand: string,
-  prompt: string,
-): SimpsonsSession {
-  // Verify claude CLI is available
-  try {
-    execSync('which claude', { stdio: 'pipe' });
-  } catch {
-    throw new Error(
-      'claude CLI not found. Install: npm install -g @anthropic-ai/claude-code',
-    );
-  }
-
-  fs.mkdirSync(SIMPSONS_DIR, { recursive: true });
-
-  const project = path.basename(projectDir);
-  const ts = Date.now().toString(36);
-  const sessionName = sanitizeSessionName(`simpsons-${project}-${ts}`);
-  const outputFile = path.join(SIMPSONS_DIR, `${sessionName}.log`);
-  const doneFile = path.join(SIMPSONS_DIR, `${sessionName}.done`);
-  const scriptFile = path.join(SIMPSONS_DIR, `${sessionName}.sh`);
-
-  const fullPrompt = prompt ? `${specCommand} ${prompt}` : specCommand;
-
-  // Write a runner script to avoid shell-escaping issues inside tmux
-  fs.writeFileSync(
-    scriptFile,
-    `#!/usr/bin/env bash
-set -o pipefail
-cd ${shellQuote(projectDir)}
-claude -p ${shellQuote(fullPrompt)} --dangerously-skip-permissions 2>&1 | tee ${shellQuote(outputFile)}
-echo \${PIPESTATUS[0]} > ${shellQuote(doneFile)}
-`,
-    { mode: 0o755 },
-  );
-
-  // Create tmux session in the project directory
-  execSync(
-    `tmux new-session -d -s ${shellQuote(sessionName)} -c ${shellQuote(projectDir)} ${shellQuote(scriptFile)}`,
-  );
-
-  logger.info(
-    { sessionName, project, specCommand },
-    'Started simpsons tmux session',
-  );
-
-  return { name: sessionName, outputFile, doneFile, scriptFile };
-}
-
-/**
- * Read the tmux pane and look for a trust-directory prompt.
- * If found, send 'y' + Enter to auto-confirm.
- */
-function handleTrustPrompt(sessionName: string): void {
-  try {
-    // Check if session still exists
-    execSync(`tmux has-session -t ${shellQuote(sessionName)} 2>/dev/null`);
-  } catch {
-    return; // Session already finished
-  }
-
-  try {
-    const pane = execSync(
-      `tmux capture-pane -t ${shellQuote(sessionName)} -p`,
-      { encoding: 'utf-8' },
-    );
-
-    if (/trust/i.test(pane)) {
-      // Send 'y' + Enter for text-based trust prompts
-      execSync(
-        `tmux send-keys -t ${shellQuote(sessionName)} y Enter`,
-      );
-      logger.info({ sessionName }, 'Sent trust confirmation to tmux session');
-    }
-  } catch (err) {
-    logger.warn(
-      { err, sessionName },
-      'Failed to check/handle trust prompt',
-    );
-  }
-}
-
-/**
- * Poll the done-file until claude finishes. No timeout.
- */
-function pollForCompletion(session: SimpsonsSession): Promise<string> {
-  return new Promise((resolve) => {
-    const check = () => {
-      // Primary signal: done file written by the runner script
-      if (fs.existsSync(session.doneFile)) {
-        const output = safeRead(session.outputFile);
-        cleanup(session);
-        resolve(output);
-        return;
-      }
-
-      // Fallback: tmux session gone (killed, crashed, etc.)
-      try {
-        execSync(
-          `tmux has-session -t ${shellQuote(session.name)} 2>/dev/null`,
-        );
-        // Session still alive — keep polling
-        setTimeout(check, POLL_INTERVAL);
-      } catch {
-        // Session gone without a done file — grab whatever output exists
-        // Wait a moment for filesystem flush
-        setTimeout(() => {
-          const output = safeRead(session.outputFile);
-          cleanup(session);
-          resolve(output);
-        }, 2000);
-      }
-    };
-
-    check();
-  });
-}
-
-function safeRead(filePath: string): string {
-  try {
-    return fs.existsSync(filePath)
-      ? fs.readFileSync(filePath, 'utf-8')
-      : '';
-  } catch {
-    return '';
-  }
-}
-
-function cleanup(session: SimpsonsSession): void {
-  for (const f of [session.doneFile, session.scriptFile]) {
-    try {
-      fs.unlinkSync(f);
-    } catch {
-      // ignore
-    }
-  }
-  // Keep outputFile — user may want to review it
-}
-
-// ---------------------------------------------------------------------------
-// Project setup helpers
-// ---------------------------------------------------------------------------
-
-function ensureSpeckit(projectDir: string): void {
-  const skillsDir = path.join(projectDir, '.claude', 'skills');
-  const speckitDir = path.join(skillsDir, 'spec-kit');
-
-  fs.mkdirSync(skillsDir, { recursive: true });
-
-  if (fs.existsSync(path.join(speckitDir, '.git'))) {
-    try {
-      execSync('git pull --ff-only', { cwd: speckitDir, stdio: 'pipe' });
-    } catch {
-      logger.warn(
-        { dir: speckitDir },
-        'spec-kit git pull failed, using existing',
-      );
-    }
-  } else {
-    if (fs.existsSync(speckitDir)) {
-      fs.rmSync(speckitDir, { recursive: true });
-    }
-    execSync(
-      'git clone https://github.com/github/spec-kit.git spec-kit',
-      { cwd: skillsDir, stdio: 'pipe' },
-    );
-  }
-
-  logger.info({ projectDir }, 'spec-kit ensured');
-}
-
-function ensureSimpsonsLoops(projectDir: string): void {
-  const skillsDir = path.join(projectDir, '.claude', 'skills');
-  const loopsDir = path.join(skillsDir, 'spec-kit-simpsons-loops');
-
-  fs.mkdirSync(skillsDir, { recursive: true });
-
-  if (fs.existsSync(path.join(loopsDir, '.git'))) {
-    try {
-      execSync('git pull --ff-only', { cwd: loopsDir, stdio: 'pipe' });
-    } catch {
-      logger.warn(
-        { dir: loopsDir },
-        'simpsons-loops git pull failed, using existing',
-      );
-    }
-  } else {
-    if (fs.existsSync(loopsDir)) {
-      fs.rmSync(loopsDir, { recursive: true });
-    }
-    execSync(
-      'git clone https://github.com/jnhuynh/spec-kit-simpsons-loops.git spec-kit-simpsons-loops',
-      { cwd: skillsDir, stdio: 'pipe' },
-    );
-  }
-
-  logger.info({ projectDir }, 'spec-kit-simpsons-loops ensured');
-}
-
-/**
- * Merge a global template file with project-specific content.
- * Everything before the delimiter is replaced with the latest global content.
- * Everything from the delimiter onwards (project-specific section) is preserved.
- */
-function mergeGlobalFile(
-  projectDir: string,
-  relPath: string,
-  globalContent: string,
-): void {
-  const fullPath = path.join(projectDir, relPath);
-  const dir = path.dirname(fullPath);
-  fs.mkdirSync(dir, { recursive: true });
-
-  if (!fs.existsSync(fullPath)) {
-    fs.writeFileSync(fullPath, globalContent);
-    logger.info({ path: relPath }, 'Created global file');
-    return;
-  }
-
-  const existing = fs.readFileSync(fullPath, 'utf-8');
-  const delimIdx = existing.indexOf(DELIMITER);
-
-  if (delimIdx === -1) {
-    // No delimiter in existing file — treat entire content as project-specific
-    // and prepend the fresh global content
-    fs.writeFileSync(fullPath, globalContent + '\n\n' + existing);
-    logger.info(
-      { path: relPath },
-      'Merged global file (no existing delimiter, prepended global)',
-    );
-    return;
-  }
-
-  // Keep the project-specific section (from delimiter onwards)
-  const projectSection = existing.slice(delimIdx);
-
-  // Take global content up to (but not including) the delimiter
-  const globalDelimIdx = globalContent.indexOf(DELIMITER);
-  const globalPart =
-    globalDelimIdx !== -1
-      ? globalContent.slice(0, globalDelimIdx)
-      : globalContent + '\n\n';
-
-  fs.writeFileSync(fullPath, globalPart + projectSection);
-  logger.info(
-    { path: relPath },
-    'Merged global file (preserved project section)',
-  );
-}
-
-/**
- * Ensure .specify/quality-gates.sh exists.
- * If it already exists, leave it untouched.
- * If missing, auto-generate based on project structure.
- */
-function ensureQualityGates(projectDir: string): void {
-  const qgPath = path.join(projectDir, '.specify', 'quality-gates.sh');
-
-  if (fs.existsSync(qgPath)) {
-    logger.info({ projectDir }, 'quality-gates.sh already exists, skipping');
-    return;
-  }
-
-  fs.mkdirSync(path.join(projectDir, '.specify'), { recursive: true });
-
-  const script = generateQualityGates(projectDir);
-  fs.writeFileSync(qgPath, script, { mode: 0o755 });
-  logger.info({ projectDir }, 'Generated quality-gates.sh');
-}
-
-function generateQualityGates(projectDir: string): string {
-  const checks: string[] = [];
-
-  // Node.js
-  const pkgPath = path.join(projectDir, 'package.json');
-  if (fs.existsSync(pkgPath)) {
-    try {
-      const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
-      const scripts = pkg.scripts || {};
-      const devDeps = pkg.devDependencies || {};
-
-      if (scripts.test) {
-        checks.push('echo "Running tests..."');
-        checks.push('npm test');
-      }
-      if (scripts.lint) {
-        checks.push('echo "Running linter..."');
-        checks.push('npm run lint');
-      }
-      if (scripts.typecheck) {
-        checks.push('echo "Running type check..."');
-        checks.push('npm run typecheck');
-      } else if (scripts['type-check']) {
-        checks.push('echo "Running type check..."');
-        checks.push('npm run type-check');
-      } else if (devDeps.typescript || pkg.dependencies?.typescript) {
-        checks.push('echo "Running type check..."');
-        checks.push('npx tsc --noEmit');
-      }
-    } catch {
-      checks.push('echo "Warning: could not parse package.json"');
-    }
-  }
-
-  // Ruby
-  if (fs.existsSync(path.join(projectDir, 'Gemfile'))) {
-    checks.push('echo "Running tests..."');
-    checks.push('bundle exec rspec');
-    if (fs.existsSync(path.join(projectDir, '.rubocop.yml'))) {
-      checks.push('echo "Running linter..."');
-      checks.push('bundle exec rubocop');
-    }
-  }
-
-  // Python
-  if (
-    fs.existsSync(path.join(projectDir, 'pyproject.toml')) ||
-    fs.existsSync(path.join(projectDir, 'requirements.txt'))
-  ) {
-    checks.push('echo "Running tests..."');
-    checks.push('pytest');
-    const pyprojectPath = path.join(projectDir, 'pyproject.toml');
-    if (fs.existsSync(pyprojectPath)) {
-      try {
-        const content = fs.readFileSync(pyprojectPath, 'utf-8');
-        if (content.includes('ruff')) {
-          checks.push('echo "Running linter..."');
-          checks.push('ruff check .');
-        } else if (content.includes('flake8')) {
-          checks.push('echo "Running linter..."');
-          checks.push('flake8 .');
-        }
-        if (content.includes('mypy')) {
-          checks.push('echo "Running type check..."');
-          checks.push('mypy .');
-        }
-      } catch {
-        // ignore parse errors
-      }
-    }
-  }
-
-  // Go
-  if (fs.existsSync(path.join(projectDir, 'go.mod'))) {
-    checks.push('echo "Running tests..."');
-    checks.push('go test ./...');
-    checks.push('echo "Running vet..."');
-    checks.push('go vet ./...');
-  }
-
-  // Rust
-  if (fs.existsSync(path.join(projectDir, 'Cargo.toml'))) {
-    checks.push('echo "Running tests..."');
-    checks.push('cargo test');
-    checks.push('echo "Running clippy..."');
-    checks.push('cargo clippy -- -D warnings');
-  }
-
-  if (checks.length === 0) {
-    checks.push(
-      'echo "No quality gates configured - add checks for your project type"',
-    );
-    checks.push('exit 0');
-  }
-
-  return `#!/usr/bin/env bash
-set -euo pipefail
-
-# Quality gates for speckit pipeline
-# Auto-generated based on project structure — edit as needed
-
-${checks.join('\n')}
-
-echo "All quality gates passed!"
-`;
-}
