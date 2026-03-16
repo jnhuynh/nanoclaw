@@ -119,23 +119,23 @@ mcp__nanoclaw__draft_git_push(directory: "YYYYMMDD-slug")
 
 This commits the thesis directory and pushes to GitHub. The commit message will be auto-generated.
 
-### 8b: Save X Draft
+### 8b: Ghost Draft
 
-Call the `draft_x_save` MCP tool with the tweet content:
+Call the `draft_ghost_publish` MCP tool:
 ```
-mcp__nanoclaw__draft_x_save(content: "the tweet text here")
+mcp__nanoclaw__draft_ghost_publish(directory: "YYYYMMDD-slug")
 ```
 
-This saves the tweet as a draft on X (not published).
+This reads `blog-draft.md` from the thesis directory and creates a draft post on Ghost. The title is extracted from the first `#` heading.
 
 ## Step 9: Report
 
 Tell the user:
 - What thesis directory was created
 - Summary of the blog draft
-- The tweet draft text
+- The tweet draft text (from `x-draft.md`, pushed to GitHub for manual posting)
 - Confirmation that changes were pushed to GitHub
-- Confirmation that X draft was saved
+- Confirmation that Ghost draft was created (with URL)
 
 ---
 

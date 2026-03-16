@@ -438,33 +438,26 @@ After creating thesis files in /workspace/projects/pj/huynh.io/{directory}/, cal
 );
 
 server.tool(
-  'draft_x_save',
-  `Save a tweet as a draft on X (Twitter). Does NOT publish — only saves to X Drafts. Main group only.
+  'draft_ghost_publish',
+  `Create a draft post on Ghost (blog). Reads blog-draft.md from the thesis directory and publishes it as a Ghost draft. Main group only.
 
-Use this after generating the tweet text in the thesis workflow.`,
+Use this after generating the blog draft and pushing to Git.`,
   {
-    content: z.string().max(280).describe('The tweet content to save as draft (max 280 characters)'),
+    directory: z.string().describe('The thesis directory name (e.g., "20260316-spec-driven-dev")'),
   },
   async (args) => {
     if (!isMain) {
       return {
-        content: [{ type: 'text' as const, text: 'Only the main group can save X drafts.' }],
+        content: [{ type: 'text' as const, text: 'Only the main group can publish Ghost drafts.' }],
         isError: true,
       };
     }
 
-    if (args.content.length > 280) {
-      return {
-        content: [{ type: 'text' as const, text: `Tweet exceeds 280 character limit (current: ${args.content.length})` }],
-        isError: true,
-      };
-    }
-
-    const requestId = `draft-x-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const requestId = `draft-ghost-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     writeIpcFile(TASKS_DIR, {
-      type: 'draft_x_save',
+      type: 'draft_ghost_publish',
       requestId,
-      content: args.content,
+      directory: args.directory,
       groupFolder,
       timestamp: new Date().toISOString(),
     });

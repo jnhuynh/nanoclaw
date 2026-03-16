@@ -134,12 +134,14 @@ export async function handleDraftIpc(
       });
       break;
 
-    case 'draft_x_save':
-      if (!data.content) {
-        result = { success: false, message: 'Missing content' };
+    case 'draft_ghost_publish':
+      if (!data.directory) {
+        result = { success: false, message: 'Missing directory' };
         break;
       }
-      result = await runScript('x-save-draft', { content: data.content });
+      result = await runScript('ghost-publish-draft', {
+        directory: data.directory,
+      });
       break;
 
     default:

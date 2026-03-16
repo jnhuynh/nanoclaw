@@ -1,6 +1,6 @@
 ---
 name: draft
-description: Generate thesis drafts for blog (huynh.io) and social media (X). Takes thoughts/ideas, creates a thesis directory, generates humanized drafts in the user's voice, commits to GitHub, and saves X drafts. Triggers on "draft", "thesis", "publish draft", "blog draft".
+description: Generate thesis drafts for blog (huynh.io) and social media (X). Takes thoughts/ideas, creates a thesis directory, generates humanized drafts in the user's voice, commits to GitHub, and publishes Ghost draft. Triggers on "draft", "thesis", "publish draft", "blog draft".
 ---
 
 # /draft - Thesis Draft Generator
@@ -14,7 +14,7 @@ Generates blog and social media drafts from ideas/theses. Never publishes — on
 | Action | Tool | Description |
 |--------|------|-------------|
 | Git Push | `draft_git_push` | Commit and push thesis to huynh.io GitHub repo |
-| X Draft | `draft_x_save` | Save tweet as draft on X (not published) |
+| Ghost Draft | `draft_ghost_publish` | Create draft post on Ghost via Admin API |
 
 ## Architecture
 
@@ -33,7 +33,7 @@ Generates blog and social media drafts from ideas/theses. Never publishes — on
 │  Host (macOS)                                               │
 │  ├── src/ipc.ts → handleDraftIpc()                         │
 │  ├── scripts/git-push.ts → git add/commit/push             │
-│  └── scripts/x-save-draft.ts → Playwright → X Drafts      │
+│  └── scripts/ghost-publish-draft.ts → Ghost Admin API      │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -45,8 +45,8 @@ src/draft.ts              # Host-side IPC handler
 .claude/skills/draft/
 ├── SKILL.md              # This documentation
 └── scripts/
-    ├── git-push.ts       # Git commit & push to GitHub
-    └── x-save-draft.ts   # Playwright save X draft
+    ├── git-push.ts              # Git commit & push to GitHub
+    └── ghost-publish-draft.ts   # Ghost Admin API draft creation
 
 container/skills/draft/
 └── SKILL.md          # Container-side agent instructions
@@ -63,7 +63,7 @@ container/skills/draft/
 - Builds Obsidian context for related notes
 
 **Container side: `container/agent-runner/src/ipc-mcp-stdio.ts`**
-- `draft_git_push` and `draft_x_save` MCP tools write IPC task files
+- `draft_git_push` and `draft_ghost_publish` MCP tools write IPC task files
 
 **Container skills: `container/skills/draft/SKILL.md`**
 - Auto-synced to container's `.claude/skills/` at startup
@@ -75,14 +75,8 @@ container/skills/draft/
 |----------|---------|-------------|
 | `DRAFT_BLOG_REPO_PATH` | `~/Projects/pj/huynh.io` | Path to the huynh.io blog repo |
 | `DRAFT_GIT_BRANCH` | `main` | Git branch to push to |
-| `CHROME_PATH` | (from X integration) | Chrome executable for X draft save |
-
-Add to `.env`:
-```bash
-# Draft skill (optional — defaults work if your repo is at ~/Projects/pj/huynh.io)
-# DRAFT_BLOG_REPO_PATH=/Users/jnhuynh/Projects/pj/huynh.io
-# DRAFT_GIT_BRANCH=main
-```
+| `GHOST_URL` | (required) | Ghost site URL (e.g., `https://huynh.io`) |
+| `GHOST_ADMIN_API_KEY` | (required) | Ghost Admin API key (`{id}:{secret}` format) |
 
 ## Usage via Messaging
 
@@ -119,9 +113,10 @@ To add a new social media channel (LinkedIn, Threads, Bluesky, etc.):
 
 ### Prerequisites
 
-- NanoClaw running with X integration authenticated (`data/x-auth.json` exists)
+- NanoClaw running
 - huynh.io repo cloned at `~/Projects/pj/huynh.io` with push access
 - Obsidian vault at `~/Obsidian/pj-private-vault/`
+- `GHOST_URL` and `GHOST_ADMIN_API_KEY` set in `.env`
 
 ### Build & Deploy
 
@@ -153,10 +148,11 @@ echo '{"directory":"test-draft-skill","commitMessage":"test: draft skill"}' | np
 rm -rf ~/Projects/pj/huynh.io/test-draft-skill
 ```
 
-### Test X draft save
+### Test Ghost draft publish
 
 ```bash
-echo '{"content":"Test draft - please ignore"}' | npx dotenv -e .env -- npx tsx .claude/skills/draft/scripts/x-save-draft.ts
+# Requires a thesis directory with blog-draft.md to exist
+echo '{"directory":"test-draft-skill"}' | npx dotenv -e .env -- npx tsx .claude/skills/draft/scripts/ghost-publish-draft.ts
 ```
 
 ## Troubleshooting
@@ -183,6 +179,7 @@ ls ~/Projects/pj/huynh.io/.git
 cd ~/Projects/pj/huynh.io && git branch
 ```
 
-### X draft save fails
+### Ghost publish fails
 
-Same troubleshooting as X integration — check `data/x-auth.json` and re-authenticate if expired.
+Check `GHOST_URL` and `GHOST_ADMIN_API_KEY` in `.env`. The key format must be `{id}:{secret}` (24-char hex id, 64-char hex secret).
+
