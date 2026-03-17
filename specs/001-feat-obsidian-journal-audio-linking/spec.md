@@ -139,4 +139,4 @@ When a note is created or appended, the system searches the vault for related ex
 - QMD may be installed and indexed on the host system; if it is not, the agent falls back to vault grep for note discovery, and the system degrades gracefully (as it does today).
 - The Obsidian vault path remains at `~/Obsidian/pj-private-vault/pj-private-vault/` on the host and `/workspace/obsidian/pj-private-vault/pj-private-vault/` in containers.
 - Audio files continue to be saved to `attachments/audio/` within the vault (existing convention, not changed).
-- The agent container skill (obsidian-notes SKILL.md) and host-side code (obsidian.ts, transcription.ts, index.ts, telegram.ts) all need updates to implement these changes.
+- The agent container skill (obsidian-notes SKILL.md) and host-side code (obsidian.ts, transcription.ts, telegram.ts) all need updates to implement these changes. index.ts does not require changes — journal intent detection is agent-level, and `buildObsidianContext()` remains on the `/obsidian` command path only.
