@@ -118,7 +118,7 @@
 
 **Purpose**: End-to-end verification, container rebuild, and documentation
 
-- [ ] T020 [P] Run full test suite, type checking, and linting (`npm test && npm run typecheck && npm run build`)
+- [x] T020 [P] Run full test suite, type checking, and linting (`npm test && npm run typecheck && npm run build`)
 - [ ] T021 [P] Clear stale agent-runner copies and rebuild container (`rm -rf data/sessions/*/agent-runner-src/ && ./container/build.sh`)
 - [ ] T022 Run quickstart.md end-to-end validation (send text message with trigger phrase, voice message, addendum voice message, and non-trigger message per specs/001-feat-obsidian-journal-audio-linking/quickstart.md)
 
