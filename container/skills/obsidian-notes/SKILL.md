@@ -85,6 +85,16 @@ Cleaned content with [[Related Note]] wikilinks woven in naturally.
 - **Audio embed**: `![[YYYY-MM-DD-HHMMSS.ogg]]` on its own line after the content — **only if the message is voice-originated** (has `[audio-file: ...]` marker). Omit for text-only entries.
 - **Blank line** separates the heading from the content, and each entry from the next.
 
+### Addendum Behavior (Follow-Up Entries)
+
+When a follow-up message arrives for the same day (whether minutes or hours later), **append** a new `### HH:MM` section to the existing `Journal/YYYY-MM-DD.md` file:
+
+1. **Read the existing file first** — never overwrite previous entries.
+2. **Append the new entry** at the end of the file, separated by a blank line from the previous entry.
+3. **Each entry gets its own `### HH:MM` heading** and its own audio embed (if voice-originated).
+4. **Chronological order is preserved** — new entries always go at the bottom since they arrive later in the day.
+5. **Mixed entry types are fine** — a voice entry with an audio embed can follow a text-only entry (no audio embed), or vice versa.
+
 ### Example: Daily Note with Multiple Entries
 
 ```markdown
@@ -97,7 +107,15 @@ Had a great meeting with the team about the [[API Migration]] project. We decide
 ### 14:30
 
 Follow-up thought: we should also consider the impact on the [[Frontend Dashboard]].
+
+### 16:45
+
+Spoke with the design team about the dashboard layout. They want to keep the current grid but add a new panel for real-time metrics.
+
+![[2026-03-17-164500.ogg]]
 ```
+
+In this example, the 09:15 and 16:45 entries are voice-originated (they have audio embeds), while the 14:30 entry is text-only (no audio embed).
 
 ## Note Creation Workflow
 

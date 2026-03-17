@@ -93,7 +93,7 @@
 
 ### Implementation for User Story 3
 
-- [ ] T017 [US3] Update the obsidian-notes container skill in container/skills/obsidian-notes/SKILL.md to document addendum behavior: appending new `### HH:MM` sections (each with their own audio embed) to existing `Journal/YYYY-MM-DD.md` files, preserving existing content and chronological order
+- [x] T017 [US3] Update the obsidian-notes container skill in container/skills/obsidian-notes/SKILL.md to document addendum behavior: appending new `### HH:MM` sections (each with their own audio embed) to existing `Journal/YYYY-MM-DD.md` files, preserving existing content and chronological order
 
 **Checkpoint**: Multiple voice notes on the same day produce a single daily note with multiple entry sections, each with its own audio embed, in chronological order.
 
