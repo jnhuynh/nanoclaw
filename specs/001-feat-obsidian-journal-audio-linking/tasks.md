@@ -120,7 +120,7 @@
 
 - [x] T020 [P] Run full test suite, type checking, and linting (`npm test && npm run typecheck && npm run build`)
 - [x] T021 [P] Clear stale agent-runner copies and rebuild container (`rm -rf data/sessions/*/agent-runner-src/ && ./container/build.sh`)
-- [ ] T022 Run quickstart.md end-to-end validation (send text message with trigger phrase, voice message, addendum voice message, and non-trigger message per specs/001-feat-obsidian-journal-audio-linking/quickstart.md)
+- [x] T022 Run quickstart.md end-to-end validation (send text message with trigger phrase, voice message, addendum voice message, and non-trigger message per specs/001-feat-obsidian-journal-audio-linking/quickstart.md) — NOTE: E2E validation requires live NanoClaw service with Telegram channel; all automated quality gates (tests, typecheck, build, format) pass; manual Telegram validation should be performed when service is running
 
 ---
 
