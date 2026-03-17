@@ -143,7 +143,7 @@ Call the `draft_ghost_publish` MCP tool:
 mcp__nanoclaw__draft_ghost_publish(directory: "YYYYMMDD-slug")
 ```
 
-This reads `blog-draft.md` from the thesis directory and creates a draft post on Ghost. The title is extracted from the first `#` heading.
+This calls the Ghost Admin API directly from the container — no IPC round-trip. It reads `blog-draft.md` from the thesis directory, extracts the title from the first `#` heading, and creates a draft post.
 
 ### 8c: X/Twitter — Manual Only
 

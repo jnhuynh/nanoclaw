@@ -12,6 +12,7 @@ import path from 'path';
 import { CronExpressionParser } from 'cron-parser';
 import { fal } from '@fal-ai/client';
 import { generateImage, downloadImage } from './fal-image.js';
+import { publishToGhost } from './ghost-publish.js';
 
 const IPC_DIR = '/workspace/ipc';
 const MESSAGES_DIR = path.join(IPC_DIR, 'messages');
@@ -607,23 +608,30 @@ After creating thesis files in /workspace/projects/pj/huynh.io/{directory}/, cal
 
 server.tool(
   'draft_ghost_publish',
-  `Create a draft post on Ghost (blog). Reads blog-draft.md from the thesis directory and publishes it as a Ghost draft. Main group only.
+  `Create a draft post on Ghost (blog). Reads blog-draft.md from the thesis directory and publishes it as a Ghost draft.
 
 Use this after generating the blog draft and pushing to Git.`,
   {
     directory: z.string().describe('The thesis directory name (e.g., "20260316-spec-driven-dev")'),
   },
   async (args) => {
-    const requestId = `draft-ghost-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    writeIpcFile(TASKS_DIR, {
-      type: 'draft_ghost_publish',
-      requestId,
+    const ghostUrl = process.env.GHOST_URL;
+    const ghostKey = process.env.GHOST_ADMIN_API_KEY;
+
+    if (!ghostUrl || !ghostKey) {
+      return {
+        content: [{ type: 'text' as const, text: 'Missing GHOST_URL or GHOST_ADMIN_API_KEY environment variable.' }],
+        isError: true,
+      };
+    }
+
+    const result = await publishToGhost({
       directory: args.directory,
-      groupFolder,
-      timestamp: new Date().toISOString(),
+      ghostUrl,
+      ghostAdminApiKey: ghostKey,
+      blogRepoPath: process.env.DRAFT_BLOG_REPO_PATH || '/workspace/projects/pj/huynh.io',
     });
 
-    const result = await waitForDraftResult(requestId);
     return {
       content: [{ type: 'text' as const, text: result.message }],
       isError: !result.success,

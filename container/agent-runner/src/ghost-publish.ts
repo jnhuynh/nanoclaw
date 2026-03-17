@@ -1,29 +1,28 @@
-#!/usr/bin/env npx tsx
 /**
- * Draft Skill - Publish Draft to Ghost
- * Creates a draft post on Ghost via the Admin API.
- * Reads blog-draft.md from the thesis directory and pushes it as a Ghost draft.
+ * Ghost CMS draft publishing.
+ * Shared between the container MCP tool and the host CLI script.
  *
- * Usage: echo '{"directory":"20260316-slug"}' | npx tsx ghost-publish-draft.ts
- *
- * Required env vars: GHOST_URL, GHOST_ADMIN_API_KEY
+ * Reads blog-draft.md from a thesis directory, extracts the title,
+ * and creates a draft post via the Ghost Admin API.
  */
 
 import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
-import os from 'os';
 
-interface GhostPublishInput {
+export interface GhostPublishOptions {
   directory: string;
+  ghostUrl: string;
+  ghostAdminApiKey: string;
+  blogRepoPath: string;
 }
 
-interface ScriptResult {
+export interface GhostPublishResult {
   success: boolean;
   message: string;
 }
 
-function createGhostToken(id: string, secret: string): string {
+export function createGhostToken(id: string, secret: string): string {
   const header = Buffer.from(
     JSON.stringify({ alg: 'HS256', typ: 'JWT', kid: id }),
   ).toString('base64url');
@@ -42,50 +41,16 @@ function createGhostToken(id: string, secret: string): string {
   return `${header}.${payload}.${signature}`;
 }
 
-async function readInput<T>(): Promise<T> {
-  return new Promise((resolve, reject) => {
-    let data = '';
-    process.stdin.setEncoding('utf8');
-    process.stdin.on('data', (chunk) => {
-      data += chunk;
-    });
-    process.stdin.on('end', () => {
-      try {
-        resolve(JSON.parse(data));
-      } catch (err) {
-        reject(new Error(`Invalid JSON input: ${err}`));
-      }
-    });
-    process.stdin.on('error', reject);
-  });
-}
-
-async function ghostPublish(
-  input: GhostPublishInput,
-): Promise<ScriptResult> {
-  const { directory } = input;
+export async function publishToGhost(
+  options: GhostPublishOptions,
+): Promise<GhostPublishResult> {
+  const { directory, ghostUrl, ghostAdminApiKey, blogRepoPath } = options;
 
   if (!/^[\w-]+$/.test(directory)) {
     return { success: false, message: `Invalid directory name: ${directory}` };
   }
 
-  const ghostUrl = process.env.GHOST_URL;
-  const ghostKey = process.env.GHOST_ADMIN_API_KEY;
-
-  if (!ghostUrl) {
-    return {
-      success: false,
-      message: 'Missing GHOST_URL in .env (e.g., https://huynh.io)',
-    };
-  }
-  if (!ghostKey) {
-    return {
-      success: false,
-      message: 'Missing GHOST_ADMIN_API_KEY in .env',
-    };
-  }
-
-  const [keyId, keySecret] = ghostKey.split(':');
+  const [keyId, keySecret] = ghostAdminApiKey.split(':');
   if (!keyId || !keySecret) {
     return {
       success: false,
@@ -93,28 +58,20 @@ async function ghostPublish(
     };
   }
 
-  // Read blog draft from the thesis directory
-  const repoPath =
-    process.env.DRAFT_BLOG_REPO_PATH ||
-    path.join(os.homedir(), 'Projects', 'pj', 'huynh.io');
-  const draftPath = path.join(repoPath, directory, 'blog-draft.md');
-
+  const draftPath = path.join(blogRepoPath, directory, 'blog-draft.md');
   if (!fs.existsSync(draftPath)) {
     return { success: false, message: `Blog draft not found: ${draftPath}` };
   }
 
   const markdown = fs.readFileSync(draftPath, 'utf-8');
 
-  // Extract title from first # heading
   const titleMatch = markdown.match(/^#\s+(.+)$/m);
   const title = titleMatch ? titleMatch[1].trim() : directory;
 
-  // Remove the title line from content
   const content = titleMatch
     ? markdown.replace(/^#\s+.+\n*/, '').trim()
     : markdown.trim();
 
-  // Create mobiledoc with markdown card (Ghost renders it natively)
   const mobiledoc = JSON.stringify({
     version: '0.3.1',
     markups: [],
@@ -134,13 +91,7 @@ async function ghostPublish(
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        posts: [
-          {
-            title,
-            mobiledoc,
-            status: 'draft',
-          },
-        ],
+        posts: [{ title, mobiledoc, status: 'draft' }],
       }),
     });
 
@@ -169,21 +120,3 @@ async function ghostPublish(
     };
   }
 }
-
-async function main(): Promise<void> {
-  try {
-    const input = await readInput<GhostPublishInput>();
-    const result = await ghostPublish(input);
-    console.log(JSON.stringify(result));
-  } catch (err) {
-    console.log(
-      JSON.stringify({
-        success: false,
-        message: `Script execution failed: ${err instanceof Error ? err.message : String(err)}`,
-      }),
-    );
-    process.exit(1);
-  }
-}
-
-main();

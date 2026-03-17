@@ -260,10 +260,16 @@ function buildContainerArgs(
     args.push('-e', 'CLAUDE_CODE_OAUTH_TOKEN=placeholder');
   }
 
-  // Pass fal.ai API key for image generation (fal client reads FAL_KEY from env)
-  const envSecrets = readEnvFile(['FAL_API_KEY']);
+  // Pass third-party API keys to containers (never mount .env directly)
+  const envSecrets = readEnvFile(['FAL_API_KEY', 'GHOST_URL', 'GHOST_ADMIN_API_KEY']);
   if (envSecrets.FAL_API_KEY) {
     args.push('-e', `FAL_KEY=${envSecrets.FAL_API_KEY}`);
+  }
+  if (envSecrets.GHOST_URL) {
+    args.push('-e', `GHOST_URL=${envSecrets.GHOST_URL}`);
+  }
+  if (envSecrets.GHOST_ADMIN_API_KEY) {
+    args.push('-e', `GHOST_ADMIN_API_KEY=${envSecrets.GHOST_ADMIN_API_KEY}`);
   }
 
   // Runtime-specific args for host gateway resolution

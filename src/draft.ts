@@ -1,7 +1,8 @@
 /**
  * Draft Skill IPC Handler
  *
- * Handles draft_git_push and draft_x_save IPC messages from container agents.
+ * Handles draft_git_push IPC messages from container agents.
+ * Ghost publishing is handled directly in the container via the shared module.
  * Scripts live in .claude/skills/draft/scripts/ and run as subprocesses.
  */
 
@@ -13,8 +14,6 @@ import { readEnvFile } from './env.js';
 
 // Read draft-related secrets from .env once at module load
 const draftEnv = readEnvFile([
-  'GHOST_URL',
-  'GHOST_ADMIN_API_KEY',
   'DRAFT_BLOG_REPO_PATH',
   'DRAFT_GIT_BRANCH',
 ]);
@@ -166,16 +165,6 @@ export async function handleDraftIpc(
       result = await runScript('git-push', {
         directory: data.directory,
         commitMessage: data.commitMessage || `draft: ${data.directory}`,
-      });
-      break;
-
-    case 'draft_ghost_publish':
-      if (!data.directory) {
-        result = { success: false, message: 'Missing directory' };
-        break;
-      }
-      result = await runScript('ghost-publish-draft', {
-        directory: data.directory,
       });
       break;
 
