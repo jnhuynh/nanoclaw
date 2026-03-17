@@ -15,6 +15,7 @@
 ### Session 2026-03-17
 
 - Q: How should trigger phrase matching work — rigid regex or agent-level natural language understanding? → A: Agent-level (LLM) intent detection. The agent determines whether the user's message expresses intent to add content to the daily journal. Matching is case-insensitive and tolerant of natural phrasing variations (e.g., "add this to my daily journal", "put this in the daily journal", "daily journal entry"). The agent strips the intent-bearing phrase from the content before saving.
+- Q: What is the internal markdown structure of each entry section within a daily note (heading format, audio embed placement, separators)? → A: Each entry gets an `### HH:MM` timestamp heading (24-hour format from the message timestamp), followed by the transcribed/text content (with inline wikilinks if applicable), followed by the audio embed on its own line (if voice-originated). Entries are separated by a blank line. Audio files are named `YYYY-MM-DD-HHMMSS.ogg` to avoid collisions.
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -46,8 +47,8 @@ Every audio note that arrives from Telegram is embedded in the daily note that w
 
 **Acceptance Scenarios**:
 
-1. **Given** a voice message is sent via Telegram, **When** the daily note is created, **Then** the original audio file is embedded in the note using Obsidian's `![[filename]]` syntax.
-2. **Given** a voice message is sent, **When** the audio is saved to the vault, **Then** the audio file is stored in `attachments/audio/` and the daily note references it.
+1. **Given** a voice message is sent via Telegram, **When** the daily note is created, **Then** the entry section contains an `### HH:MM` heading, the transcribed content, and the original audio file embedded on its own line using Obsidian's `![[YYYY-MM-DD-HHMMSS.ogg]]` syntax.
+2. **Given** a voice message is sent, **When** the audio is saved to the vault, **Then** the audio file is stored at `attachments/audio/YYYY-MM-DD-HHMMSS.ogg` and the daily note references it.
 3. **Given** a text-only message (no voice), **When** a note is created, **Then** no audio embed is added to the note.
 
 ---
@@ -112,11 +113,13 @@ When a note is created or appended, the system uses QMD to search the vault for 
 - **FR-010**: System MUST weave wikilinks naturally into the note content, not as a disconnected list.
 - **FR-011**: System MUST degrade gracefully — if QMD fails, audio save fails, or the journal folder is inaccessible, the note creation must still succeed with whatever components are available.
 - **FR-012**: System MUST use the message timestamp (not processing time) to determine which daily note date to use.
+- **FR-013**: Each entry section within a daily note MUST start with an `### HH:MM` heading (24-hour format from the message timestamp), followed by the content, followed by the audio embed on its own line (if voice-originated). Entries MUST be separated by a blank line.
+- **FR-014**: Audio files MUST be named `YYYY-MM-DD-HHMMSS.ogg` (derived from the message timestamp) to prevent filename collisions when multiple voice notes arrive on the same day.
 
 ### Key Entities
 
-- **Daily Note**: A markdown file at `Journal/YYYY-MM-DD.md` containing transcribed content, audio embeds, and inline wikilinks. Accumulates entries throughout the day.
-- **Audio Attachment**: An `.ogg` file stored in `attachments/audio/` and referenced via `![[filename]]` embed syntax within a daily note.
+- **Daily Note**: A markdown file at `Journal/YYYY-MM-DD.md` containing one or more entry sections. Accumulates entries throughout the day. Each entry section consists of an `### HH:MM` timestamp heading (24-hour format, derived from the message timestamp), followed by the transcribed/text content (with inline wikilinks if applicable), followed by the audio embed on its own line (if voice-originated). Entries are separated by a blank line.
+- **Audio Attachment**: An `.ogg` file stored in `attachments/audio/`, named `YYYY-MM-DD-HHMMSS.ogg` (derived from message timestamp to avoid collisions), and referenced via `![[filename]]` embed syntax within a daily note.
 - **Related Note**: An existing vault note discovered via QMD search that is contextually relevant to the new content, linked inline with `[[wikilink]]` syntax.
 
 ## Success Criteria *(mandatory)*
