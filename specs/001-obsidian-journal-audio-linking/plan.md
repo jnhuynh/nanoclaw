@@ -56,7 +56,7 @@ src/
 ├── transcription.ts         # MODIFY: accept message timestamp for audio filename, pass through to saveAudioToVault
 ├── channels/
 │   └── telegram.ts          # MODIFY: pass message timestamp to transcribeBuffer, include timestamp in audio-file metadata
-├── index.ts                 # MODIFY: add journal intent detection in onMessage callback, route to obsidian enrichment
+├── index.ts                 # NO CHANGES: journal intent detection is agent-level per research.md R1/R4; buildObsidianContext() stays on /obsidian path only
 
 container/skills/
 └── obsidian-notes/
