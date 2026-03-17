@@ -159,6 +159,44 @@ export function generateAudioFilename(timestamp: Date): string {
 }
 
 /**
+ * Format a journal entry with a ### HH:MM heading, content, and optional audio embed.
+ * Produces the markdown format per data-model.md:
+ *   ### HH:MM
+ *
+ *   Content text here.
+ *
+ *   ![[audioFile]]   (only if audioFile is provided)
+ */
+export function formatJournalEntry(
+  timestamp: Date,
+  content: string,
+  audioFile?: string,
+): string {
+  const h = String(timestamp.getUTCHours()).padStart(2, '0');
+  const m = String(timestamp.getUTCMinutes()).padStart(2, '0');
+  const heading = `### ${h}:${m}`;
+
+  let entry = `${heading}\n\n${content}`;
+
+  if (audioFile) {
+    entry += `\n\n![[${audioFile}]]`;
+  }
+
+  return entry;
+}
+
+/**
+ * Get the journal note path for a given timestamp.
+ * Returns `Journal/YYYY-MM-DD.md` relative to the vault root.
+ */
+export function getJournalNotePath(timestamp: Date): string {
+  const y = timestamp.getUTCFullYear();
+  const mo = String(timestamp.getUTCMonth() + 1).padStart(2, '0');
+  const d = String(timestamp.getUTCDate()).padStart(2, '0');
+  return `Journal/${y}-${mo}-${d}.md`;
+}
+
+/**
  * Save an audio buffer to the vault's attachments directory.
  * Returns the filename (relative to vault) for embedding.
  */
