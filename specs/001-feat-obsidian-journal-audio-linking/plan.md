@@ -26,7 +26,7 @@ Update the NanoClaw Obsidian integration so that daily notes are placed in a `Jo
 | Principle | Status | Notes |
 |-----------|--------|-------|
 | I. Readability First | PASS | Changes use descriptive names, clear data flow |
-| II. Functional Design | PASS | `buildJournalEntry()` is a pure formatter; `saveAudioToVault()` takes inputs and returns deterministic output paths |
+| II. Functional Design | PASS | `formatJournalEntry()` is a pure formatter; `saveAudioToVault()` takes inputs and returns deterministic output paths |
 | III. Maintainability | PASS | No clever tricks; changes follow established host+container pattern |
 | IV. Best Practices | PASS | Follows existing NanoClaw patterns (IPC context files, container skills, Obsidian markdown conventions) |
 | V. Simplicity (KISS & YAGNI) | PASS | No new services or infrastructure; extends existing obsidian.ts, transcription.ts, telegram.ts, index.ts, and the container skill |
