@@ -13,10 +13,7 @@ import { logger } from './logger.js';
 import { readEnvFile } from './env.js';
 
 // Read draft-related secrets from .env once at module load
-const draftEnv = readEnvFile([
-  'DRAFT_BLOG_REPO_PATH',
-  'DRAFT_GIT_BRANCH',
-]);
+const draftEnv = readEnvFile(['DRAFT_BLOG_REPO_PATH', 'DRAFT_GIT_BRANCH']);
 
 interface SkillResult {
   success: boolean;
