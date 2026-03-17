@@ -39,7 +39,7 @@
 - [x] T004 Modify `saveAudioToVault()` in src/obsidian.ts to accept a `messageTimestamp: Date` parameter and name files `YYYY-MM-DD-HHMMSS.ogg` instead of `voice-{id}.ogg`
 - [x] T005 Modify `transcribeBuffer()` in src/transcription.ts to accept an optional `messageTimestamp: Date` in the options parameter and pass it through to `saveAudioToVault()`
 - [x] T006 Modify Telegram voice handler in src/channels/telegram.ts to pass `new Date(ctx.message.date * 1000)` as `messageTimestamp` to `transcribeBuffer()`
-- [ ] T007 Run tests and verify T002, T003 pass (`npm test`)
+- [x] T007 Run tests and verify T002, T003 pass (`npm test`)
 
 **Checkpoint**: Audio files are now named with message timestamps. All existing voice message handling still works.
 
