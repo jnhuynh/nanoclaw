@@ -4,6 +4,30 @@ vi.mock('./logger.js', () => ({
   logger: { info: vi.fn(), debug: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
 
+// Mock child_process for transcribeBuffer tests (ffmpeg + whisper)
+vi.mock('child_process', async (importOriginal) => {
+  const actual = (await importOriginal()) as any;
+  return {
+    ...actual,
+    execFile: vi.fn(
+      (
+        _cmd: string,
+        _args: string[],
+        _opts: any,
+        cb?: (
+          err: Error | null,
+          result: { stdout: string; stderr: string },
+        ) => void,
+      ) => {
+        if (cb) {
+          cb(null, { stdout: 'Transcribed text here', stderr: '' });
+        }
+        return {} as any;
+      },
+    ),
+  };
+});
+
 import fs from 'fs';
 import {
   generateAudioFilename,
@@ -11,6 +35,7 @@ import {
   formatJournalEntry,
   getJournalNotePath,
 } from './obsidian.js';
+import { transcribeBuffer } from './transcription.js';
 
 // --- generateAudioFilename ---
 
@@ -208,5 +233,44 @@ describe('getJournalNotePath', () => {
     const result = getJournalNotePath(timestamp);
 
     expect(result).toBe('Journal/2026-12-31.md');
+  });
+});
+
+// --- US2: Audio filename format and [audio-file: ...] marker integration ---
+
+describe('US2: saveAudioToVault filename format and transcribeBuffer audio-file marker', () => {
+  beforeEach(() => {
+    vi.spyOn(fs, 'mkdirSync').mockImplementation(() => undefined as any);
+    vi.spyOn(fs, 'writeFileSync').mockImplementation(() => {});
+  });
+
+  it('saveAudioToVault returns a filename matching YYYY-MM-DD-HHMMSS.ogg pattern', () => {
+    const buffer = Buffer.from('fake-audio');
+    const timestamp = new Date('2026-03-17T09:45:12.000Z');
+
+    const filename = saveAudioToVault(buffer, timestamp);
+
+    // Must match the timestamp-based pattern, not legacy voice-{id}.ogg
+    expect(filename).toMatch(/^\d{4}-\d{2}-\d{2}-\d{6}\.ogg$/);
+    expect(filename).not.toMatch(/^voice-/);
+    expect(filename).toBe('2026-03-17-094512.ogg');
+  });
+
+  it('transcribeBuffer returns audioFile in YYYY-MM-DD-HHMMSS.ogg format when messageTimestamp is provided', async () => {
+    // fs operations used by transcribeBuffer (tmp file write/cleanup) are already mocked
+    vi.spyOn(fs, 'unlinkSync').mockImplementation(() => {});
+
+    const messageTimestamp = new Date('2026-03-17T14:30:45.000Z');
+    const result = await transcribeBuffer(Buffer.from('fake-audio'), {
+      saveToVault: true,
+      messageTimestamp,
+    });
+
+    expect(result).not.toBeNull();
+    expect(result!.audioFile).toBeDefined();
+    // The audioFile must match timestamp-based format, not legacy voice-{id}.ogg
+    expect(result!.audioFile).toMatch(/^\d{4}-\d{2}-\d{2}-\d{6}\.ogg$/);
+    expect(result!.audioFile).not.toMatch(/^voice-/);
+    expect(result!.audioFile).toBe('2026-03-17-143045.ogg');
   });
 });
