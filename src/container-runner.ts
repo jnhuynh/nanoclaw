@@ -261,9 +261,13 @@ function buildContainerArgs(
   }
 
   // Pass third-party API keys to containers (never mount .env directly)
-  const envSecrets = readEnvFile(['FAL_API_KEY', 'GHOST_URL', 'GHOST_ADMIN_API_KEY']);
-  if (envSecrets.FAL_API_KEY) {
-    args.push('-e', `FAL_KEY=${envSecrets.FAL_API_KEY}`);
+  const envSecrets = readEnvFile([
+    'FAL_KEY',
+    'GHOST_URL',
+    'GHOST_ADMIN_API_KEY',
+  ]);
+  if (envSecrets.FAL_KEY) {
+    args.push('-e', `FAL_KEY=${envSecrets.FAL_KEY}`);
   }
   if (envSecrets.GHOST_URL) {
     args.push('-e', `GHOST_URL=${envSecrets.GHOST_URL}`);

@@ -1,7 +1,7 @@
 #!/usr/bin/env npx tsx
 /**
  * CLI script for generating images with fal.ai.
- * Reads FAL_API_KEY from .env and calls flux/schnell by default.
+ * Reads FAL_KEY from .env and calls flux/schnell by default.
  *
  * Usage:
  *   npx tsx scripts/generate-image.ts "a sunset over mountains"
@@ -20,15 +20,15 @@ const projectRoot = path.resolve(__dirname, '..');
 
 function loadFalKey(): string {
   if (process.env.FAL_KEY) return process.env.FAL_KEY;
-  if (process.env.FAL_API_KEY) return process.env.FAL_API_KEY;
+  if (process.env.FAL_KEY) return process.env.FAL_KEY;
 
   const envPath = path.join(projectRoot, '.env');
   if (fs.existsSync(envPath)) {
     const content = fs.readFileSync(envPath, 'utf-8');
     for (const line of content.split('\n')) {
       const trimmed = line.trim();
-      if (trimmed.startsWith('FAL_API_KEY=')) {
-        let value = trimmed.slice('FAL_API_KEY='.length).trim();
+      if (trimmed.startsWith('FAL_KEY=')) {
+        let value = trimmed.slice('FAL_KEY='.length).trim();
         if ((value.startsWith('"') && value.endsWith('"')) ||
             (value.startsWith("'") && value.endsWith("'"))) {
           value = value.slice(1, -1);
@@ -38,7 +38,7 @@ function loadFalKey(): string {
     }
   }
 
-  console.error('FAL_API_KEY not found in .env or environment');
+  console.error('FAL_KEY not found in .env or environment');
   process.exit(1);
 }
 

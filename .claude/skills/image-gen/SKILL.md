@@ -58,6 +58,6 @@ npx tsx scripts/generate-image.ts "detailed illustration" --model fal-ai/flux/de
 
 ## Notes
 
-- FAL_API_KEY is read from `.env` automatically
+- FAL_KEY is read from `.env` automatically
 - Images are saved locally — check the output path after generation
 - The same core module powers both this script and the container agent's `generate_image` MCP tool
