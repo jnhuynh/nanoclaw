@@ -13,9 +13,10 @@ You manage the user's Obsidian vault at `/workspace/obsidian/pj-private-vault/pj
 ```
 pj-private-vault/
 ├── TODO.md              ← Daily todo list (always check this)
-├── YYYY-MM-DD.md        ← Daily notes
+├── Journal/
+│   └── YYYY-MM-DD.md   ← Daily journal notes (new entries go here)
 ├── attachments/
-│   └── audio/           ← Voice message audio files
+│   └── audio/           ← Voice message audio files (YYYY-MM-DD-HHMMSS.ogg)
 ├── Jama/
 ├── People/
 ├── Recipes/
@@ -32,6 +33,71 @@ Act on any message that involves:
 - Voice transcriptions that should become notes
 - Requests mentioning "obsidian", "vault", "note", or "write down"
 - Messages wrapped in `[OBSIDIAN_NOTE]...[/OBSIDIAN_NOTE]` markers (from `/obsidian` command)
+- **Journal intent**: Messages expressing intent to add content to the daily journal (see below)
+
+## Journal Entry Workflow
+
+### Detecting Journal Intent
+
+When a message (voice or text) expresses intent to add content to the daily journal, create or append to the journal daily note. This is **automatic** — no `/obsidian` command is required.
+
+**Intent detection is NLU-based (your judgment)**. Recognize natural phrasing variants such as:
+- "add to the daily journal"
+- "add this to my daily journal"
+- "put this in the daily journal"
+- "daily journal entry"
+- "journal this"
+- And other natural variations expressing the same intent
+
+Intent detection is **case-insensitive** and tolerant of phrasing differences.
+
+### Stripping the Trigger Phrase
+
+Before saving the content, **strip the intent-bearing phrase** from the text. The user wants only the actual content in the note, not the instruction.
+
+Examples:
+- "Add to the daily journal: Had a great meeting with the team" → "Had a great meeting with the team"
+- "Daily journal entry — I need to follow up on the API migration" → "I need to follow up on the API migration"
+- "Put this in the daily journal, I'm thinking about restructuring the backend" → "I'm thinking about restructuring the backend"
+- "I want to add to the daily journal my thoughts on X" → "my thoughts on X"
+
+### Creating or Appending to a Journal Daily Note
+
+1. **Determine the date** from the message timestamp (the `time` attribute in the `<message>` XML), NOT from `Date.now()`.
+2. **Path**: `Journal/YYYY-MM-DD.md` relative to the vault root. Create the `Journal/` folder if it does not exist.
+3. **If the file does not exist**, create it with the new entry.
+4. **If the file already exists**, append the new entry to the end (preserve existing content).
+
+### Entry Format
+
+Each journal entry within a daily note uses this format:
+
+```markdown
+### HH:MM
+
+Cleaned content with [[Related Note]] wikilinks woven in naturally.
+
+![[YYYY-MM-DD-HHMMSS.ogg]]
+```
+
+- **`### HH:MM`**: 24-hour format heading derived from the message timestamp
+- **Content**: Cleaned text or transcription (trigger phrase stripped, filler words removed for voice)
+- **Audio embed**: `![[YYYY-MM-DD-HHMMSS.ogg]]` on its own line after the content — **only if the message is voice-originated** (has `[audio-file: ...]` marker). Omit for text-only entries.
+- **Blank line** separates the heading from the content, and each entry from the next.
+
+### Example: Daily Note with Multiple Entries
+
+```markdown
+### 09:15
+
+Had a great meeting with the team about the [[API Migration]] project. We decided to move forward with the new approach discussed in [[Backend Refactor]].
+
+![[2026-03-17-091500.ogg]]
+
+### 14:30
+
+Follow-up thought: we should also consider the impact on the [[Frontend Dashboard]].
+```
 
 ## Note Creation Workflow
 
@@ -94,7 +160,7 @@ Place notes in the appropriate folder:
 - Restaurant reviews → `Restaurants/`
 - Travel → `Travel/`
 - General thoughts → `Thoughts/`
-- Daily entries → root as `YYYY-MM-DD.md` (append if exists)
+- Daily journal entries → `Journal/YYYY-MM-DD.md` (append if exists, see Journal Entry Workflow above)
 
 **Note format:**
 
@@ -167,6 +233,7 @@ Recognize these patterns and act accordingly:
 | "let's create a note with..." | Create a new note from the content |
 | "save this to obsidian" | Create a note from recent conversation |
 | Any `[OBSIDIAN_NOTE]` wrapped content | Create a note (from /obsidian command) |
+| "add to the daily journal" / "daily journal entry" / similar | Create/append to `Journal/YYYY-MM-DD.md` (see Journal Entry Workflow) |
 
 ## Important Rules
 
