@@ -31,9 +31,9 @@ When the user sends a voice or text message via Telegram that expresses intent t
 
 1. **Given** no daily note exists for today, **When** a voice note containing "add to the daily journal" is sent via Telegram, **Then** a new daily note is created at `Journal/YYYY-MM-DD.md` inside the vault with the trigger phrase stripped from the content.
 2. **Given** a daily note already exists at `Journal/YYYY-MM-DD.md`, **When** a second message containing the trigger phrase is sent, **Then** the new content is appended to the existing daily note rather than creating a new file.
-5. **Given** a voice or text message is sent via Telegram without the trigger phrase, **When** the message is processed, **Then** no Journal daily note is created or modified (standard message flow applies).
-3. **Given** the `Journal/` folder does not yet exist in the vault, **When** the first daily note is created, **Then** the `Journal/` folder is created automatically.
-4. **Given** old daily notes exist in the vault root (e.g., `YYYY-MM-DD.md`), **When** a new note is created, **Then** the system writes to `Journal/` and does not modify root-level daily notes.
+3. **Given** a voice or text message is sent via Telegram without the trigger phrase, **When** the message is processed, **Then** no Journal daily note is created or modified (standard message flow applies).
+4. **Given** the `Journal/` folder does not yet exist in the vault, **When** the first daily note is created, **Then** the `Journal/` folder is created automatically.
+5. **Given** old daily notes exist in the vault root (e.g., `YYYY-MM-DD.md`), **When** a new note is created, **Then** the system writes to `Journal/` and does not modify root-level daily notes.
 
 ---
 
