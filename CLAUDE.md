@@ -136,3 +136,10 @@ Reference implementation: `generate_image` (fal.ai) — see `container/agent-run
 ## Container Build Cache
 
 The container buildkit caches the build context aggressively. `--no-cache` alone does NOT invalidate COPY steps — the builder's volume retains stale files. To force a truly clean rebuild, prune the builder then re-run `./container/build.sh`.
+
+## Active Technologies
+- TypeScript 5.x (Node.js, ESM) + grammy (Telegram), whisper.cpp (transcription), qmd (vault search), better-sqlite3 (001-obsidian-journal-audio-linking)
+- Obsidian vault on filesystem (`~/Obsidian/pj-private-vault/pj-private-vault/`), SQLite for message state (001-obsidian-journal-audio-linking)
+
+## Recent Changes
+- 001-obsidian-journal-audio-linking: Added TypeScript 5.x (Node.js, ESM) + grammy (Telegram), whisper.cpp (transcription), qmd (vault search), better-sqlite3
