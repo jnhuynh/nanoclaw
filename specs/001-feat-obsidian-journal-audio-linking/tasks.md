@@ -17,7 +17,7 @@
 
 **Purpose**: Project initialization — no new project structure needed; this feature modifies existing files only (plus one new test file)
 
-- [ ] T001 Verify existing project builds and tests pass (`npm run build && npm test && npm run typecheck`)
+- [x] T001 Verify existing project builds and tests pass (`npm run build && npm test && npm run typecheck`)
 
 ---
 
