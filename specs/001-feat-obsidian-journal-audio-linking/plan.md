@@ -5,7 +5,7 @@
 
 ## Summary
 
-Update the NanoClaw Obsidian integration so that daily notes are placed in a `Journal/` folder, voice messages from Telegram are automatically embedded alongside their transcriptions, addendum voice notes append with their own audio embeds, and QMD search results are used to weave inline wikilinks to related existing notes. The key design change is moving from an explicit `/obsidian` command to agent-level (LLM) intent detection: messages containing natural language variants of "add to the daily journal" are automatically routed through the obsidian enrichment pipeline without requiring a slash command.
+Update the NanoClaw Obsidian integration so that daily notes are placed in a `Journal/` folder, voice messages from Telegram are automatically embedded alongside their transcriptions, addendum voice notes append with their own audio embeds, and the agent searches the vault for related notes to weave inline wikilinks (via vault grep for agent-detected entries, or QMD when available on the `/obsidian` command path). The key design change is moving from an explicit `/obsidian` command to agent-level (LLM) intent detection: messages containing natural language variants of "add to the daily journal" are automatically routed through the obsidian enrichment pipeline without requiring a slash command.
 
 ## Technical Context
 
