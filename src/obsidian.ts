@@ -147,17 +147,20 @@ function normalizeTag(tag: string): string {
 /**
  * Generate a timestamp-based audio filename from a Date.
  * Format: YYYY-MM-DD-HHMMSS.ogg (UTC)
- * Stub: will be implemented in T004.
  */
-export function generateAudioFilename(_timestamp: Date): string {
-  // TODO(T004): implement timestamp-based filename generation
-  return 'voice-stub.ogg';
+export function generateAudioFilename(timestamp: Date): string {
+  const y = timestamp.getUTCFullYear();
+  const mo = String(timestamp.getUTCMonth() + 1).padStart(2, '0');
+  const d = String(timestamp.getUTCDate()).padStart(2, '0');
+  const h = String(timestamp.getUTCHours()).padStart(2, '0');
+  const mi = String(timestamp.getUTCMinutes()).padStart(2, '0');
+  const s = String(timestamp.getUTCSeconds()).padStart(2, '0');
+  return `${y}-${mo}-${d}-${h}${mi}${s}.ogg`;
 }
 
 /**
  * Save an audio buffer to the vault's attachments directory.
  * Returns the filename (relative to vault) for embedding.
- * Stub: accepts messageTimestamp but uses legacy naming until T004 implementation.
  */
 export function saveAudioToVault(
   audioBuffer: Buffer,
@@ -165,8 +168,7 @@ export function saveAudioToVault(
 ): string {
   fs.mkdirSync(AUDIO_DIR, { recursive: true });
 
-  // TODO(T004): use generateAudioFilename(messageTimestamp) instead of legacy naming
-  const filename = `voice-${messageTimestamp.getTime()}.ogg`;
+  const filename = generateAudioFilename(messageTimestamp);
   const filePath = path.join(AUDIO_DIR, filename);
   fs.writeFileSync(filePath, audioBuffer);
 

@@ -40,8 +40,12 @@ describe('saveAudioToVault', () => {
   let writeFileSyncSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
-    mkdirSyncSpy = vi.spyOn(fs, 'mkdirSync').mockImplementation(() => undefined as any);
-    writeFileSyncSpy = vi.spyOn(fs, 'writeFileSync').mockImplementation(() => {});
+    mkdirSyncSpy = vi
+      .spyOn(fs, 'mkdirSync')
+      .mockImplementation(() => undefined as any);
+    writeFileSyncSpy = vi
+      .spyOn(fs, 'writeFileSync')
+      .mockImplementation(() => {});
   });
 
   it('accepts a Date parameter and returns a timestamp-based filename', () => {
