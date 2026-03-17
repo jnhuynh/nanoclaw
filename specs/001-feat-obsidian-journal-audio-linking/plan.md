@@ -29,7 +29,7 @@ Update the NanoClaw Obsidian integration so that daily notes are placed in a `Jo
 | II. Functional Design | PASS | `formatJournalEntry()` is a pure formatter; `saveAudioToVault()` takes inputs and returns deterministic output paths |
 | III. Maintainability | PASS | No clever tricks; changes follow established host+container pattern |
 | IV. Best Practices | PASS | Follows existing NanoClaw patterns (IPC context files, container skills, Obsidian markdown conventions) |
-| V. Simplicity (KISS & YAGNI) | PASS | No new services or infrastructure; extends existing obsidian.ts, transcription.ts, telegram.ts, index.ts, and the container skill |
+| V. Simplicity (KISS & YAGNI) | PASS | No new services or infrastructure; extends existing obsidian.ts, transcription.ts, telegram.ts, and the container skill |
 | Test-First | PASS | Tests for journal entry formatting, audio filename generation, timestamp-based date resolution |
 | Quality Gates | PASS | All changes go through existing vitest + tsc --noEmit pipeline |
 
