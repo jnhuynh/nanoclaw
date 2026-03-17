@@ -28,6 +28,7 @@ import {
   stopContainer,
 } from './container-runtime.js';
 import { detectAuthMode } from './credential-proxy.js';
+import { readEnvFile } from './env.js';
 import { validateAdditionalMounts } from './mount-security.js';
 import { RegisteredGroup } from './types.js';
 
@@ -257,6 +258,12 @@ function buildContainerArgs(
     args.push('-e', 'ANTHROPIC_API_KEY=placeholder');
   } else {
     args.push('-e', 'CLAUDE_CODE_OAUTH_TOKEN=placeholder');
+  }
+
+  // Pass fal.ai API key for image generation (fal client reads FAL_KEY from env)
+  const envSecrets = readEnvFile(['FAL_API_KEY']);
+  if (envSecrets.FAL_API_KEY) {
+    args.push('-e', `FAL_KEY=${envSecrets.FAL_API_KEY}`);
   }
 
   // Runtime-specific args for host gateway resolution

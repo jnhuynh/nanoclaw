@@ -89,6 +89,7 @@ Single Node.js process with skill-based channel system. Channels (WhatsApp, Tele
 | `/update-nanoclaw` | Bring upstream NanoClaw updates into a customized install |
 | `/qodo-pr-resolver` | Fetch and fix Qodo PR review issues interactively or in batch |
 | `/get-qodo-rules` | Load org- and repo-level coding rules from Qodo before code tasks |
+| `/image-gen` | Generate images with fal.ai (works on host and in containers) |
 
 ## Development
 
@@ -116,6 +117,21 @@ systemctl --user restart nanoclaw
 ## Troubleshooting
 
 **WhatsApp not connecting after upgrade:** WhatsApp is now a separate channel fork, not bundled in core. Run `/add-whatsapp` (or `git remote add whatsapp https://github.com/qwibitai/nanoclaw-whatsapp.git && git fetch whatsapp main && (git merge whatsapp/main || { git checkout --theirs package-lock.json && git add package-lock.json && git merge --continue; }) && npm run build`) to install it. Existing auth credentials and groups are preserved.
+
+## Shared Host + Container Commands
+
+When adding a command that needs to work both on the host (Claude Code) and inside agent containers, follow this pattern:
+
+1. **Core module** in `container/agent-runner/src/` — pure logic with dependency injection (no hard imports of external SDK clients). This compiles with the agent-runner and is the single source of truth.
+2. **MCP tool** in `container/agent-runner/src/ipc-mcp-stdio.ts` — imports the core module, passes the SDK client. Container agents call it as `mcp__nanoclaw__<tool_name>`.
+3. **CLI script** in `scripts/` — imports the core module, configures credentials from `.env`. Host Claude Code calls it via Bash.
+4. **Host skill** in `.claude/skills/<name>/SKILL.md` — documents the CLI interface so Claude Code auto-triggers without reading the script.
+5. **Container skill** in `container/skills/<name>/SKILL.md` — documents the MCP tool interface for container agents.
+6. **Test** in `container/agent-runner/src/<module>.test.ts` — tests the core module with DI mocks (no cross-`node_modules` issues). Vitest picks it up via the `container/agent-runner/src/**/*.test.ts` include in `vitest.config.ts`.
+7. **Env vars** — read secrets from `.env` via `readEnvFile()` in `src/container-runner.ts` and pass as `-e` args to the container. Never mount `.env` into containers.
+8. **After changes** — delete stale per-group agent-runner copies (`data/sessions/*/agent-runner-src/`) and rebuild the container (`./container/build.sh`).
+
+Reference implementation: `generate_image` (fal.ai) — see `container/agent-runner/src/fal-image.ts`.
 
 ## Container Build Cache
 

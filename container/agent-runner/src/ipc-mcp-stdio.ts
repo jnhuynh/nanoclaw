@@ -10,6 +10,8 @@ import { z } from 'zod';
 import fs from 'fs';
 import path from 'path';
 import { CronExpressionParser } from 'cron-parser';
+import { fal } from '@fal-ai/client';
+import { generateImage, downloadImage } from './fal-image.js';
 
 const IPC_DIR = '/workspace/ipc';
 const MESSAGES_DIR = path.join(IPC_DIR, 'messages');
@@ -464,6 +466,82 @@ The session_name is returned when you call run_simpsons (format: "simpsons-{proj
       content: [{ type: 'text' as const, text: result.message }],
       isError: !result.success,
     };
+  },
+);
+
+// --- Image Generation Tool ---
+
+server.tool(
+  'generate_image',
+  `Generate images using fal.ai. Default model: fal-ai/flux/schnell (fast, high quality).
+
+Returns generated image file paths saved to the workspace. Use this for:
+• Blog header images (use landscape_4_3 or landscape_16_9)
+• Social media graphics (use square_hd or square)
+• Creative iteration — adjust prompt, size, seed to refine results
+
+The images are saved to the output directory you specify (defaults to /workspace/group).`,
+  {
+    prompt: z.string().describe('Text description of the image to generate'),
+    image_size: z.enum([
+      'square_hd', 'square', 'portrait_4_3', 'portrait_16_9',
+      'landscape_4_3', 'landscape_16_9',
+    ]).optional().describe('Image dimensions preset. Default: landscape_4_3'),
+    num_images: z.number().min(1).max(4).optional().describe('Number of images to generate (1-4). Default: 1'),
+    output_format: z.enum(['jpeg', 'png']).optional().describe('Output format. Default: jpeg'),
+    seed: z.number().optional().describe('Seed for reproducible results. Omit for random.'),
+    output_dir: z.string().optional().describe('Directory to save images. Default: /workspace/group'),
+    filename: z.string().optional().describe('Custom filename (without extension). Default: auto-generated.'),
+    model: z.string().optional().describe('fal.ai model ID. Default: fal-ai/flux/schnell. Alternative: fal-ai/flux/dev (slower, higher quality)'),
+  },
+  async (args) => {
+    const outputDir = args.output_dir || '/workspace/group';
+
+    try {
+      const result = await generateImage(fal, {
+        prompt: args.prompt,
+        model: args.model,
+        image_size: args.image_size,
+        num_images: args.num_images,
+        output_format: args.output_format,
+        seed: args.seed,
+      });
+
+      if (!result.images || result.images.length === 0) {
+        return {
+          content: [{ type: 'text' as const, text: 'No images were generated.' }],
+          isError: true,
+        };
+      }
+
+      const ext = args.output_format || 'jpeg';
+      const savedPaths: string[] = [];
+
+      for (let i = 0; i < result.images.length; i++) {
+        const image = result.images[i];
+        const name = args.filename
+          ? (result.images.length > 1 ? `${args.filename}-${i + 1}.${ext}` : `${args.filename}.${ext}`)
+          : `fal-${Date.now()}-${i}.${ext}`;
+
+        const filePath = await downloadImage(image.url, outputDir, name);
+        savedPaths.push(filePath);
+      }
+
+      const summary = savedPaths.map((p, i) => {
+        const img = result.images[i];
+        return `${p} (${img.width}x${img.height})`;
+      }).join('\n');
+
+      return {
+        content: [{ type: 'text' as const, text: `Generated ${savedPaths.length} image(s) (seed: ${result.seed}):\n${summary}` }],
+      };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return {
+        content: [{ type: 'text' as const, text: `Image generation failed: ${message}` }],
+        isError: true,
+      };
+    }
   },
 );
 
