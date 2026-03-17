@@ -157,14 +157,16 @@ export function generateAudioFilename(_timestamp: Date): string {
 /**
  * Save an audio buffer to the vault's attachments directory.
  * Returns the filename (relative to vault) for embedding.
+ * Stub: accepts messageTimestamp but uses legacy naming until T004 implementation.
  */
 export function saveAudioToVault(
   audioBuffer: Buffer,
-  messageId: string,
+  messageTimestamp: Date,
 ): string {
   fs.mkdirSync(AUDIO_DIR, { recursive: true });
 
-  const filename = `voice-${messageId}.ogg`;
+  // TODO(T004): use generateAudioFilename(messageTimestamp) instead of legacy naming
+  const filename = `voice-${messageTimestamp.getTime()}.ogg`;
   const filePath = path.join(AUDIO_DIR, filename);
   fs.writeFileSync(filePath, audioBuffer);
 

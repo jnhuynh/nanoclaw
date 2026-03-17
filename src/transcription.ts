@@ -63,7 +63,7 @@ export async function transcribeBuffer(
     let audioFile: string | undefined;
     if (options?.saveToVault !== false) {
       try {
-        audioFile = saveAudioToVault(audioBuffer, id);
+        audioFile = saveAudioToVault(audioBuffer, new Date());
       } catch (err) {
         console.error('Failed to save audio to vault (non-fatal):', err);
       }
