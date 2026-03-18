@@ -1,9 +1,11 @@
+import { CronExpressionParser } from 'cron-parser';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { _initTestDatabase, createTask, getTaskById } from './db.js';
 import {
   _resetSchedulerLoopForTests,
   computeNextRun,
+  rehydrateTaskTimezones,
   startSchedulerLoop,
 } from './task-scheduler.js';
 
@@ -129,5 +131,49 @@ describe('task scheduler', () => {
     const offset =
       (new Date(nextRun!).getTime() - new Date(scheduledTime).getTime()) % ms;
     expect(offset).toBe(0);
+  });
+});
+
+describe('rehydrateTaskTimezones', () => {
+  beforeEach(() => {
+    _initTestDatabase();
+  });
+
+  it('corrects drifted cron task next_run and updates created_tz', () => {
+    // Create a cron task "0 9 * * *" that was created under UTC
+    const utcNextRun = CronExpressionParser.parse('0 9 * * *', {
+      tz: 'UTC',
+    })
+      .next()
+      .toISOString();
+
+    createTask({
+      id: 'drift-cron-1',
+      group_folder: 'main',
+      chat_jid: 'group@g.us',
+      prompt: 'daily digest',
+      schedule_type: 'cron',
+      schedule_value: '0 9 * * *',
+      context_mode: 'isolated',
+      next_run: utcNextRun,
+      status: 'active',
+      created_at: '2026-03-17T00:00:00.000Z',
+      created_tz: 'UTC',
+    });
+
+    // Run rehydration under America/Chicago
+    rehydrateTaskTimezones('America/Chicago');
+
+    // Compute what the correct next_run should be under America/Chicago
+    const expectedNextRun = CronExpressionParser.parse('0 9 * * *', {
+      tz: 'America/Chicago',
+    })
+      .next()
+      .toISOString();
+
+    const task = getTaskById('drift-cron-1');
+    expect(task).toBeDefined();
+    expect(task!.next_run).toBe(expectedNextRun);
+    expect(task!.created_tz).toBe('America/Chicago');
   });
 });

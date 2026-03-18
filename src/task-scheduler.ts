@@ -10,11 +10,13 @@ import {
 } from './container-runner.js';
 import {
   getAllTasks,
+  getCronTasksForRehydration,
   getDueTasks,
   getTaskById,
   logTaskRun,
   updateTask,
   updateTaskAfterRun,
+  updateTaskTimezone,
 } from './db.js';
 import { GroupQueue } from './group-queue.js';
 import { resolveGroupFolderPath } from './group-folder.js';
@@ -274,6 +276,27 @@ export function startSchedulerLoop(deps: SchedulerDependencies): void {
   };
 
   loop();
+}
+
+/**
+ * On startup, detect and correct cron tasks whose `next_run` values are
+ * inconsistent with the current timezone configuration. Prevents duplicate
+ * or mistimed task executions after a timezone change.
+ */
+export function rehydrateTaskTimezones(timezone: string): void {
+  const tasks = getCronTasksForRehydration(timezone);
+
+  for (const task of tasks) {
+    const newNextRun = CronExpressionParser.parse(task.schedule_value, {
+      tz: timezone,
+    })
+      .next()
+      .toISOString();
+
+    if (newNextRun) {
+      updateTaskTimezone(task.id, newNextRun, timezone);
+    }
+  }
 }
 
 /** @internal - for tests only. */

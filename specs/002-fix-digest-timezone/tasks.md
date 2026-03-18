@@ -49,7 +49,7 @@
 
 > **NOTE: Write these tests FIRST, ensure they FAIL before implementation**
 
-- [ ] T007 [P] [US1] Write test: rehydration corrects drifted cron task — create cron task `0 9 * * *` with `created_tz = 'UTC'`, run `rehydrateTaskTimezones('America/Chicago')`, verify `next_run` is recomputed with `America/Chicago` tz and `created_tz` is updated in `src/task-scheduler.test.ts`
+- [x] T007 [P] [US1] Write test: rehydration corrects drifted cron task — create cron task `0 9 * * *` with `created_tz = 'UTC'`, run `rehydrateTaskTimezones('America/Chicago')`, verify `next_run` is recomputed with `America/Chicago` tz and `created_tz` is updated in `src/task-scheduler.test.ts`
 - [ ] T008 [P] [US1] Write test: rehydration skips cron task when `created_tz` matches current TIMEZONE — create cron task with `created_tz = 'America/Chicago'`, run `rehydrateTaskTimezones('America/Chicago')`, verify `next_run` is unchanged in `src/task-scheduler.test.ts`
 - [ ] T009 [P] [US1] Write test: rehydration skips interval tasks — create interval task with `created_tz = 'UTC'`, run `rehydrateTaskTimezones('America/Chicago')`, verify `next_run` is unchanged in `src/task-scheduler.test.ts`
 - [ ] T010 [P] [US1] Write test: rehydration skips once-type tasks — create once task with `created_tz = 'UTC'`, run `rehydrateTaskTimezones('America/Chicago')`, verify `next_run` is unchanged in `src/task-scheduler.test.ts`

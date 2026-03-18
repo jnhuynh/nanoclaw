@@ -475,6 +475,14 @@ export function updateTaskTimezone(
   ).run(nextRun, createdTz, id);
 }
 
+export function getCronTasksForRehydration(timezone: string): ScheduledTask[] {
+  return db
+    .prepare(
+      `SELECT * FROM scheduled_tasks WHERE schedule_type = 'cron' AND status IN ('active', 'paused') AND created_tz != ?`,
+    )
+    .all(timezone) as ScheduledTask[];
+}
+
 export function deleteTask(id: string): void {
   // Delete child records first (FK constraint)
   db.prepare('DELETE FROM task_run_logs WHERE task_id = ?').run(id);
