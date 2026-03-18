@@ -113,7 +113,7 @@
 
 **Purpose**: Validation, cleanup, and edge case hardening
 
-- [ ] T023 Run full test suite (`npm test`) — verify all existing and new tests pass
+- [x] T023 Run full test suite (`npm test`) — verify all existing and new tests pass
 - [ ] T024 Run type checker (`npm run typecheck`) — verify zero type errors
 - [ ] T025 Run linter — verify zero lint errors
 - [ ] T026 Run build (`npm run build`) — verify clean compilation
