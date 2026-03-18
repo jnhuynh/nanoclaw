@@ -57,6 +57,8 @@ src/
 ├── task-scheduler.ts    # New rehydrateTaskTimezones() function
 ├── types.ts             # Add created_tz to ScheduledTask interface
 ├── task-scheduler.test.ts  # New rehydration tests
+├── db.test.ts              # Tests for updateTaskTimezone(), pre-migration default
+├── ipc-auth.test.ts        # Test for created_tz on IPC task creation
 └── logger.ts            # Used for correction logging (no changes needed)
 ```
 

@@ -76,7 +76,7 @@
 
 > **NOTE: Write these tests FIRST, ensure they FAIL before implementation**
 
-- [ ] T016 [P] [US2] Write test: new task created via IPC includes `created_tz` set to current TIMEZONE — call `processTaskIpc` with a `schedule_task` payload, read back the task row and verify `created_tz` matches `TIMEZONE` in `src/ipc-auth.test.ts` (or a new dedicated test file `src/ipc.test.ts`)
+- [ ] T016 [P] [US2] Write test: new task created via IPC includes `created_tz` set to current TIMEZONE — call `processTaskIpc` with a `schedule_task` payload, read back the task row and verify `created_tz` matches `TIMEZONE` in `src/ipc-auth.test.ts`
 - [ ] T017 [P] [US2] Write test: pre-migration rows have `created_tz = 'UTC'` — create a task without specifying `created_tz`, verify the database default is `'UTC'` in `src/db.test.ts`
 
 ### Implementation for User Story 2
@@ -205,4 +205,4 @@ Task T015: Call rehydrateTaskTimezones(TIMEZONE) in src/index.ts
 - Verify tests fail before implementing
 - Commit after each task or logical group
 - Stop at any checkpoint to validate story independently
-- Files changed: `src/types.ts`, `src/db.ts`, `src/task-scheduler.ts`, `src/ipc.ts`, `src/index.ts`, `src/task-scheduler.test.ts`, `src/db.test.ts`
+- Files changed: `src/types.ts`, `src/db.ts`, `src/task-scheduler.ts`, `src/ipc.ts`, `src/index.ts`, `src/task-scheduler.test.ts`, `src/db.test.ts`, `src/ipc-auth.test.ts`
