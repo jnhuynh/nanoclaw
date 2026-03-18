@@ -93,6 +93,15 @@ function createSchema(database: Database.Database): void {
     /* column already exists */
   }
 
+  // Add created_tz column if it doesn't exist (migration for existing DBs)
+  try {
+    database.exec(
+      `ALTER TABLE scheduled_tasks ADD COLUMN created_tz TEXT DEFAULT 'UTC'`,
+    );
+  } catch {
+    /* column already exists */
+  }
+
   // Add is_bot_message column if it doesn't exist (migration for existing DBs)
   try {
     database.exec(
