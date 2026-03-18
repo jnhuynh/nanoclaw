@@ -375,6 +375,26 @@ describe('task CRUD', () => {
     expect(getTaskById('task-2')!.status).toBe('paused');
   });
 
+  it('persists created_tz when creating a task with non-UTC timezone', () => {
+    createTask({
+      id: 'task-tz',
+      group_folder: 'main',
+      chat_jid: 'group@g.us',
+      prompt: 'digest',
+      schedule_type: 'cron',
+      schedule_value: '0 9 * * *',
+      context_mode: 'isolated',
+      next_run: '2026-03-18T14:00:00.000Z',
+      status: 'active',
+      created_at: '2026-03-17T00:00:00.000Z',
+      created_tz: 'America/Chicago',
+    });
+
+    const task = getTaskById('task-tz');
+    expect(task).toBeDefined();
+    expect(task!.created_tz).toBe('America/Chicago');
+  });
+
   it('deletes a task and its run logs', () => {
     createTask({
       id: 'task-3',
