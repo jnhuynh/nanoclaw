@@ -10,6 +10,7 @@
 ### Session 2026-03-17
 
 - Q: What happens if rehydration fails partway through (e.g., after correcting some tasks but not all)? Should corrections be transactional or idempotent? → A: Per-task idempotent — each task's `next_run` and `created_tz` are updated atomically (single UPDATE statement per task). No wrapping transaction needed. If the process crashes mid-rehydration, uncorrected tasks retain their old `created_tz` and will be corrected on the next startup. The update order within each task MUST be: update both `next_run` and `created_tz` in a single UPDATE statement to prevent inconsistent intermediate state.
+- Q: How does rehydration determine whether a cron task's `next_run` is "already correct" — by comparing the `next_run` value or by checking `created_tz`? → A: By `created_tz == TIMEZONE` string comparison. The system does NOT recompute and compare `next_run` values. If `created_tz` matches the current `TIMEZONE`, the task is skipped entirely regardless of its `next_run` value.
 
 ## Assumptions
 
@@ -32,7 +33,7 @@ When NanoClaw starts, it should detect and correct any scheduled tasks whose `ne
 **Acceptance Scenarios**:
 
 1. **Given** a cron task `0 9 * * *` with `next_run` computed under UTC (e.g., `2026-03-18T09:00:00.000Z`), **When** NanoClaw starts with `TIMEZONE=America/Chicago`, **Then** the task's `next_run` is recomputed using the cron expression evaluated in `America/Chicago`, yielding `2026-03-18T14:00:00.000Z` (9am Central = 2pm UTC during CDT).
-2. **Given** a cron task `0 9 * * *` with `next_run` already correct for the current timezone, **When** NanoClaw starts, **Then** the task's `next_run` is unchanged (no unnecessary writes).
+2. **Given** a cron task `0 9 * * *` whose `created_tz` already matches the current `TIMEZONE` (e.g., both `America/Chicago`), **When** NanoClaw starts, **Then** the task's `next_run` is unchanged (no unnecessary writes). Detection is by `created_tz == TIMEZONE` string comparison, NOT by comparing the computed `next_run` value.
 3. **Given** an interval task (not cron), **When** NanoClaw starts, **Then** the task's `next_run` is not modified (interval tasks are relative, not timezone-dependent).
 
 ---
