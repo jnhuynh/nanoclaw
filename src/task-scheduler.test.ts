@@ -208,4 +208,32 @@ describe('rehydrateTaskTimezones', () => {
     expect(task!.next_run).toBe(chicagoNextRun);
     expect(task!.created_tz).toBe('America/Chicago');
   });
+
+  it('skips interval tasks during rehydration', () => {
+    // Create an interval task with created_tz = 'UTC' (different from target tz)
+    const intervalNextRun = new Date(Date.now() + 60_000).toISOString();
+
+    createTask({
+      id: 'interval-skip-1',
+      group_folder: 'main',
+      chat_jid: 'group@g.us',
+      prompt: 'check status',
+      schedule_type: 'interval',
+      schedule_value: '60000',
+      context_mode: 'isolated',
+      next_run: intervalNextRun,
+      status: 'active',
+      created_at: '2026-03-17T00:00:00.000Z',
+      created_tz: 'UTC',
+    });
+
+    // Run rehydration under America/Chicago
+    rehydrateTaskTimezones('America/Chicago');
+
+    // Verify next_run is unchanged — interval tasks are timezone-independent
+    const task = getTaskById('interval-skip-1');
+    expect(task).toBeDefined();
+    expect(task!.next_run).toBe(intervalNextRun);
+    expect(task!.created_tz).toBe('UTC');
+  });
 });
