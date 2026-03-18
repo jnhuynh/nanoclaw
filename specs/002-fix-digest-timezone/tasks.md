@@ -117,7 +117,7 @@
 - [x] T024 Run type checker (`npm run typecheck`) — verify zero type errors
 - [x] T025 Run linter — verify zero lint errors
 - [x] T026 Run build (`npm run build`) — verify clean compilation
-- [ ] T027 Run quickstart.md validation: verify `created_tz` column exists in store/messages.db with correct default, and check startup logs for rehydration entries
+- [x] T027 Run quickstart.md validation: verify `created_tz` column exists in store/messages.db with correct default, and check startup logs for rehydration entries
 
 ---
 
