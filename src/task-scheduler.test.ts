@@ -176,4 +176,36 @@ describe('rehydrateTaskTimezones', () => {
     expect(task!.next_run).toBe(expectedNextRun);
     expect(task!.created_tz).toBe('America/Chicago');
   });
+
+  it('skips cron task when created_tz matches current TIMEZONE', () => {
+    // Create a cron task already aligned with America/Chicago
+    const chicagoNextRun = CronExpressionParser.parse('0 9 * * *', {
+      tz: 'America/Chicago',
+    })
+      .next()
+      .toISOString();
+
+    createTask({
+      id: 'matching-tz-cron',
+      group_folder: 'main',
+      chat_jid: 'group@g.us',
+      prompt: 'daily digest',
+      schedule_type: 'cron',
+      schedule_value: '0 9 * * *',
+      context_mode: 'isolated',
+      next_run: chicagoNextRun,
+      status: 'active',
+      created_at: '2026-03-17T00:00:00.000Z',
+      created_tz: 'America/Chicago',
+    });
+
+    // Run rehydration under the same timezone
+    rehydrateTaskTimezones('America/Chicago');
+
+    // Verify next_run is unchanged
+    const task = getTaskById('matching-tz-cron');
+    expect(task).toBeDefined();
+    expect(task!.next_run).toBe(chicagoNextRun);
+    expect(task!.created_tz).toBe('America/Chicago');
+  });
 });
