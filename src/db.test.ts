@@ -507,6 +507,31 @@ describe('updateTaskTimezone', () => {
   });
 });
 
+// --- pre-migration created_tz default ---
+
+describe('pre-migration created_tz default', () => {
+  it('defaults created_tz to UTC when not specified', () => {
+    // Simulate a pre-migration row by omitting created_tz
+    // The createTask fallback (|| 'UTC') and the DB DEFAULT 'UTC' both ensure this
+    createTask({
+      id: 'pre-migration-task',
+      group_folder: 'main',
+      chat_jid: 'group@g.us',
+      prompt: 'legacy task',
+      schedule_type: 'cron',
+      schedule_value: '0 9 * * *',
+      context_mode: 'isolated',
+      next_run: '2026-03-18T09:00:00.000Z',
+      status: 'active',
+      created_at: '2026-03-17T00:00:00.000Z',
+    } as Parameters<typeof createTask>[0]);
+
+    const task = getTaskById('pre-migration-task');
+    expect(task).toBeDefined();
+    expect(task!.created_tz).toBe('UTC');
+  });
+});
+
 // --- RegisteredGroup isMain round-trip ---
 
 describe('registered group isMain', () => {
