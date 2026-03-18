@@ -5,6 +5,12 @@
 **Status**: Draft
 **Input**: User description: "Fix duplicate daily digests caused by timezone drift in cron scheduler. The cron task `0 9 * * *` was created when NanoClaw interpreted time as UTC (9am UTC = 4am Central). After restart with correct timezone, it fires again at 9am Central. Both triggers ran during the overlap."
 
+## Clarifications
+
+### Session 2026-03-17
+
+- Q: What happens if rehydration fails partway through (e.g., after correcting some tasks but not all)? Should corrections be transactional or idempotent? → A: Per-task idempotent — each task's `next_run` and `created_tz` are updated atomically (single UPDATE statement per task). No wrapping transaction needed. If the process crashes mid-rehydration, uncorrected tasks retain their old `created_tz` and will be corrected on the next startup. The update order within each task MUST be: update both `next_run` and `created_tz` in a single UPDATE statement to prevent inconsistent intermediate state.
+
 ## Assumptions
 
 - **A1**: The root cause is timezone drift — the task's `created_at` timestamp and initial `next_run` were computed under UTC because the `TZ` environment variable was not set when the task was first registered. After a restart with the correct timezone (e.g., `America/Chicago`), the same `0 9 * * *` cron now evaluates to 9am Central, causing both the stale UTC-based fire (4am Central) and the correct fire (9am Central) on the same day.
@@ -68,6 +74,7 @@ When NanoClaw starts and rehydrates tasks, it should log any timezone correction
 - What happens when a `once` task has a stale `next_run`? Once-tasks use absolute timestamps and are not timezone-dependent — they should be skipped during rehydration.
 - What happens during DST transitions? The `cron-parser` library with `tz` option handles DST correctly. The rehydration just needs to call it with the current timezone.
 - What happens if `TIMEZONE` is explicitly set to `UTC` and the task was created under `UTC`? No correction should occur — `created_tz` matches current timezone.
+- What happens if the process crashes during rehydration (partial failure)? Each task correction is idempotent — `next_run` and `created_tz` are updated in a single UPDATE statement per task. Uncorrected tasks retain their old `created_tz` and will be corrected on the next startup. No wrapping transaction is needed.
 
 ## Requirements *(mandatory)*
 
@@ -82,6 +89,7 @@ When NanoClaw starts and rehydrates tasks, it should log any timezone correction
 - **FR-007**: System MUST log each timezone correction applied during startup, including task ID, old and new `next_run`, and timezone change.
 - **FR-008**: The `computeNextRun` function MUST continue to use the current `TIMEZONE` for cron parsing (no behavioral change to existing runtime logic).
 - **FR-009**: The IPC `schedule_task` handler MUST pass the current `TIMEZONE` as `created_tz` when creating new tasks.
+- **FR-010**: Each task's `next_run` and `created_tz` MUST be updated in a single UPDATE statement during rehydration (atomic per-task correction). No wrapping transaction across all tasks is required — the operation is idempotent and self-corrects on subsequent startups if interrupted.
 
 ### Key Entities
 
