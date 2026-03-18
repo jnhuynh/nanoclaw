@@ -23,17 +23,19 @@ const FALLBACK_MESSAGE = '[Voice Message - transcription unavailable]';
 
 export interface TranscriptionResult {
   transcript: string;
-  audioFile?: string; // Filename in vault attachments (e.g., "voice-1710500000.ogg")
+  audioFile?: string; // Filename in vault attachments (e.g., "2026-03-17-143045.ogg")
 }
 
 /**
  * Transcribe an audio buffer using local whisper.cpp.
  * Channel-agnostic — any channel can call this with a raw audio buffer.
  * When saveToVault is true, persists the audio to the Obsidian vault attachments.
+ * When messageTimestamp is provided, uses it for the audio filename (YYYY-MM-DD-HHMMSS.ogg);
+ * otherwise falls back to the current time.
  */
 export async function transcribeBuffer(
   audioBuffer: Buffer,
-  options?: { saveToVault?: boolean },
+  options?: { saveToVault?: boolean; messageTimestamp?: Date },
 ): Promise<TranscriptionResult | null> {
   const tmpDir = os.tmpdir();
   const id = `nanoclaw-voice-${Date.now()}`;
@@ -63,7 +65,10 @@ export async function transcribeBuffer(
     let audioFile: string | undefined;
     if (options?.saveToVault !== false) {
       try {
-        audioFile = saveAudioToVault(audioBuffer, id);
+        audioFile = saveAudioToVault(
+          audioBuffer,
+          options?.messageTimestamp ?? new Date(),
+        );
       } catch (err) {
         console.error('Failed to save audio to vault (non-fatal):', err);
       }

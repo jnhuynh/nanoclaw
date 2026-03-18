@@ -145,16 +145,68 @@ function normalizeTag(tag: string): string {
 }
 
 /**
+ * Generate a timestamp-based audio filename from a Date.
+ * Format: YYYY-MM-DD-HHMMSS.ogg (UTC)
+ */
+export function generateAudioFilename(timestamp: Date): string {
+  const y = timestamp.getUTCFullYear();
+  const mo = String(timestamp.getUTCMonth() + 1).padStart(2, '0');
+  const d = String(timestamp.getUTCDate()).padStart(2, '0');
+  const h = String(timestamp.getUTCHours()).padStart(2, '0');
+  const mi = String(timestamp.getUTCMinutes()).padStart(2, '0');
+  const s = String(timestamp.getUTCSeconds()).padStart(2, '0');
+  return `${y}-${mo}-${d}-${h}${mi}${s}.ogg`;
+}
+
+/**
+ * Format a journal entry with a ### HH:MM heading, content, and optional audio embed.
+ * Produces the markdown format per data-model.md:
+ *   ### HH:MM
+ *
+ *   Content text here.
+ *
+ *   ![[audioFile]]   (only if audioFile is provided)
+ */
+export function formatJournalEntry(
+  timestamp: Date,
+  content: string,
+  audioFile?: string,
+): string {
+  const h = String(timestamp.getUTCHours()).padStart(2, '0');
+  const m = String(timestamp.getUTCMinutes()).padStart(2, '0');
+  const heading = `### ${h}:${m}`;
+
+  let entry = `${heading}\n\n${content}`;
+
+  if (audioFile) {
+    entry += `\n\n![[${audioFile}]]`;
+  }
+
+  return entry;
+}
+
+/**
+ * Get the journal note path for a given timestamp.
+ * Returns `Journal/YYYY-MM-DD.md` relative to the vault root.
+ */
+export function getJournalNotePath(timestamp: Date): string {
+  const y = timestamp.getUTCFullYear();
+  const mo = String(timestamp.getUTCMonth() + 1).padStart(2, '0');
+  const d = String(timestamp.getUTCDate()).padStart(2, '0');
+  return `Journal/${y}-${mo}-${d}.md`;
+}
+
+/**
  * Save an audio buffer to the vault's attachments directory.
  * Returns the filename (relative to vault) for embedding.
  */
 export function saveAudioToVault(
   audioBuffer: Buffer,
-  messageId: string,
+  messageTimestamp: Date,
 ): string {
   fs.mkdirSync(AUDIO_DIR, { recursive: true });
 
-  const filename = `voice-${messageId}.ogg`;
+  const filename = generateAudioFilename(messageTimestamp);
   const filePath = path.join(AUDIO_DIR, filename);
   fs.writeFileSync(filePath, audioBuffer);
 

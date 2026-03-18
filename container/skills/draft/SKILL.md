@@ -123,6 +123,25 @@ Before finalizing, audit every draft against these AI-writing patterns and elimi
 
 Re-read the voice.md one more time. Then re-read each draft. Fix anything that doesn't sound like it was written by the person described in voice.md. Trust your judgment — if a sentence sounds "written by AI", rewrite it.
 
+## Core Philosophy: Third-Party Packages and Tools
+
+When a post involves building on top of, extending, or integrating with existing packages, frameworks, or tools, follow these rules strictly:
+
+**Always delineate responsibility clearly.**
+If something broke or was frustrating, be explicit about whether it was the third-party package's limitation or something built on top of it. Never conflate the two.
+
+**Never be negative toward packages being built on.**
+The tone toward any dependency should be neutral-to-positive. These are tools being used as building blocks — not things to critique. If there's a limitation worth noting (e.g., intentionally manual workflow), frame it as a design choice, not a flaw.
+
+**Own your own failures.**
+If the problems described are in code written on top of a package, say so directly. "This was our bug, not theirs." That's more honest and more useful to the reader.
+
+**Improvement framing, not complaint framing.**
+The narrative arc should be: here's what the package does, here's what we added, here's what we had to fix in our own layer. Not: here's what was wrong with the ecosystem.
+
+**Check every "what went wrong" section.**
+Before finalizing any draft that describes problems with a workflow, explicitly verify: are these problems with the upstream package, or with the code/automation built on top of it? If it's the latter, the writing must make that clear.
+
 ## Step 8: Header Image
 
 Check the thesis directory for an existing header image:
