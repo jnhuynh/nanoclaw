@@ -236,4 +236,32 @@ describe('rehydrateTaskTimezones', () => {
     expect(task!.next_run).toBe(intervalNextRun);
     expect(task!.created_tz).toBe('UTC');
   });
+
+  it('skips once-type tasks during rehydration', () => {
+    // Create a once task with created_tz = 'UTC' (different from target tz)
+    const onceNextRun = new Date(Date.now() + 3_600_000).toISOString();
+
+    createTask({
+      id: 'once-skip-1',
+      group_folder: 'main',
+      chat_jid: 'group@g.us',
+      prompt: 'one-time reminder',
+      schedule_type: 'once',
+      schedule_value: onceNextRun,
+      context_mode: 'isolated',
+      next_run: onceNextRun,
+      status: 'active',
+      created_at: '2026-03-17T00:00:00.000Z',
+      created_tz: 'UTC',
+    });
+
+    // Run rehydration under America/Chicago
+    rehydrateTaskTimezones('America/Chicago');
+
+    // Verify next_run is unchanged — once tasks use absolute timestamps
+    const task = getTaskById('once-skip-1');
+    expect(task).toBeDefined();
+    expect(task!.next_run).toBe(onceNextRun);
+    expect(task!.created_tz).toBe('UTC');
+  });
 });
