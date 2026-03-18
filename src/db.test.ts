@@ -13,6 +13,7 @@ import {
   storeChatMetadata,
   storeMessage,
   updateTask,
+  updateTaskTimezone,
 } from './db.js';
 
 beforeEach(() => {
@@ -346,6 +347,7 @@ describe('task CRUD', () => {
       next_run: '2024-06-01T00:00:00.000Z',
       status: 'active',
       created_at: '2024-01-01T00:00:00.000Z',
+      created_tz: 'UTC',
     });
 
     const task = getTaskById('task-1');
@@ -366,10 +368,31 @@ describe('task CRUD', () => {
       next_run: null,
       status: 'active',
       created_at: '2024-01-01T00:00:00.000Z',
+      created_tz: 'UTC',
     });
 
     updateTask('task-2', { status: 'paused' });
     expect(getTaskById('task-2')!.status).toBe('paused');
+  });
+
+  it('persists created_tz when creating a task with non-UTC timezone', () => {
+    createTask({
+      id: 'task-tz',
+      group_folder: 'main',
+      chat_jid: 'group@g.us',
+      prompt: 'digest',
+      schedule_type: 'cron',
+      schedule_value: '0 9 * * *',
+      context_mode: 'isolated',
+      next_run: '2026-03-18T14:00:00.000Z',
+      status: 'active',
+      created_at: '2026-03-17T00:00:00.000Z',
+      created_tz: 'America/Chicago',
+    });
+
+    const task = getTaskById('task-tz');
+    expect(task).toBeDefined();
+    expect(task!.created_tz).toBe('America/Chicago');
   });
 
   it('deletes a task and its run logs', () => {
@@ -384,6 +407,7 @@ describe('task CRUD', () => {
       next_run: null,
       status: 'active',
       created_at: '2024-01-01T00:00:00.000Z',
+      created_tz: 'UTC',
     });
 
     deleteTask('task-3');
@@ -446,6 +470,65 @@ describe('message query LIMIT', () => {
       50,
     );
     expect(messages).toHaveLength(10);
+  });
+});
+
+// --- updateTaskTimezone ---
+
+describe('updateTaskTimezone', () => {
+  it('atomically updates next_run and created_tz in a single statement', () => {
+    createTask({
+      id: 'tz-task-1',
+      group_folder: 'main',
+      chat_jid: 'group@g.us',
+      prompt: 'daily digest',
+      schedule_type: 'cron',
+      schedule_value: '0 9 * * *',
+      context_mode: 'isolated',
+      next_run: '2026-03-17T09:00:00.000Z',
+      status: 'active',
+      created_at: '2026-03-16T00:00:00.000Z',
+      created_tz: 'UTC',
+    });
+
+    const newNextRun = '2026-03-17T14:00:00.000Z';
+    const newTz = 'America/Chicago';
+
+    updateTaskTimezone('tz-task-1', newNextRun, newTz);
+
+    const task = getTaskById('tz-task-1');
+    expect(task).toBeDefined();
+    expect(task!.next_run).toBe(newNextRun);
+    expect(task!.created_tz).toBe(newTz);
+    // Verify other fields are untouched
+    expect(task!.prompt).toBe('daily digest');
+    expect(task!.status).toBe('active');
+    expect(task!.schedule_value).toBe('0 9 * * *');
+  });
+});
+
+// --- pre-migration created_tz default ---
+
+describe('pre-migration created_tz default', () => {
+  it('defaults created_tz to UTC when not specified', () => {
+    // Simulate a pre-migration row by omitting created_tz
+    // The createTask fallback (|| 'UTC') and the DB DEFAULT 'UTC' both ensure this
+    createTask({
+      id: 'pre-migration-task',
+      group_folder: 'main',
+      chat_jid: 'group@g.us',
+      prompt: 'legacy task',
+      schedule_type: 'cron',
+      schedule_value: '0 9 * * *',
+      context_mode: 'isolated',
+      next_run: '2026-03-18T09:00:00.000Z',
+      status: 'active',
+      created_at: '2026-03-17T00:00:00.000Z',
+    } as Parameters<typeof createTask>[0]);
+
+    const task = getTaskById('pre-migration-task');
+    expect(task).toBeDefined();
+    expect(task!.created_tz).toBe('UTC');
   });
 });
 

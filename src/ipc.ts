@@ -271,6 +271,7 @@ export async function processTaskIpc(
           next_run: nextRun,
           status: 'active',
           created_at: new Date().toISOString(),
+          created_tz: TIMEZONE,
         });
         logger.info(
           { taskId, sourceGroup, targetFolder, contextMode },

@@ -93,6 +93,15 @@ function createSchema(database: Database.Database): void {
     /* column already exists */
   }
 
+  // Add created_tz column if it doesn't exist (migration for existing DBs)
+  try {
+    database.exec(
+      `ALTER TABLE scheduled_tasks ADD COLUMN created_tz TEXT DEFAULT 'UTC'`,
+    );
+  } catch {
+    /* column already exists */
+  }
+
   // Add is_bot_message column if it doesn't exist (migration for existing DBs)
   try {
     database.exec(
@@ -368,8 +377,8 @@ export function createTask(
 ): void {
   db.prepare(
     `
-    INSERT INTO scheduled_tasks (id, group_folder, chat_jid, prompt, schedule_type, schedule_value, context_mode, next_run, status, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO scheduled_tasks (id, group_folder, chat_jid, prompt, schedule_type, schedule_value, context_mode, next_run, status, created_at, created_tz)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `,
   ).run(
     task.id,
@@ -382,6 +391,7 @@ export function createTask(
     task.next_run,
     task.status,
     task.created_at,
+    task.created_tz || 'UTC',
   );
 }
 
@@ -410,7 +420,12 @@ export function updateTask(
   updates: Partial<
     Pick<
       ScheduledTask,
-      'prompt' | 'schedule_type' | 'schedule_value' | 'next_run' | 'status'
+      | 'prompt'
+      | 'schedule_type'
+      | 'schedule_value'
+      | 'next_run'
+      | 'status'
+      | 'created_tz'
     >
   >,
 ): void {
@@ -437,6 +452,10 @@ export function updateTask(
     fields.push('status = ?');
     values.push(updates.status);
   }
+  if (updates.created_tz !== undefined) {
+    fields.push('created_tz = ?');
+    values.push(updates.created_tz);
+  }
 
   if (fields.length === 0) return;
 
@@ -444,6 +463,24 @@ export function updateTask(
   db.prepare(
     `UPDATE scheduled_tasks SET ${fields.join(', ')} WHERE id = ?`,
   ).run(...values);
+}
+
+export function updateTaskTimezone(
+  id: string,
+  nextRun: string,
+  createdTz: string,
+): void {
+  db.prepare(
+    `UPDATE scheduled_tasks SET next_run = ?, created_tz = ? WHERE id = ?`,
+  ).run(nextRun, createdTz, id);
+}
+
+export function getCronTasksForRehydration(timezone: string): ScheduledTask[] {
+  return db
+    .prepare(
+      `SELECT * FROM scheduled_tasks WHERE schedule_type = 'cron' AND status IN ('active', 'paused') AND created_tz != ?`,
+    )
+    .all(timezone) as ScheduledTask[];
 }
 
 export function deleteTask(id: string): void {
